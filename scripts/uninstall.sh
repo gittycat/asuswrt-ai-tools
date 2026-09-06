@@ -1,21 +1,28 @@
 #!/usr/bin/env bash
 # Remove every installed component of this project from a Mac: the CLI, the
-# MCP registrations in Claude Code and Codex, the ChatGPT connector, the Claude
-# Code plugin and its saved settings, the skill leftovers from before v0.8.0,
-# and the Claude Desktop extension along with its virtualenv and install record.
-# Safe to run when only some of them are present. Tool-owned workspace history
-# is left alone.
+# MCP registrations in Claude Code, Codex and Gemini CLI, the ChatGPT
+# connector, the Claude Code plugin and its saved settings, the skill leftovers
+# from before v0.8.0, and the Claude Desktop extension along with its
+# virtualenv and install record. Safe to run when only some of them are
+# present. Tool-owned workspace history is left alone.
 #
-# Not touched: ~/.cache/uv. Since v0.9.0 the plugin and the extension resolve
+# Not touched: ~/.cache/uv. Since v0.8.0 the plugin and the extension resolve
 # their dependencies through uv, which caches wheels there — shared with every
 # other uv project on the machine, so removing it is never this script's call.
 #
 # Run from inside a clone and it also returns the working tree to the state
 # git clone leaves it in, so the next install starts from nothing.
 #
+# The router login stays put unless --password is passed. Since v0.8.0 that
+# login is written by `asuswrt setup` (and by the ChatGPT connector installer)
+# to ~/.config/asuswrt/.env, or to $ASUSWRT_ENV_FILE when that is set; a clone
+# may also hold its own .env. A password typed into the Claude Code plugin or
+# Claude Desktop extension dialog is not a file at all — it lives in that app's
+# secure storage and leaves with the plugin or extension.
+#
 #   ./scripts/uninstall.sh                     # dry run, changes nothing
-#   ./scripts/uninstall.sh --yes               # do it, keep password and .claude/
-#   ./scripts/uninstall.sh --yes --password    # also delete ~/.config/asuswrt
+#   ./scripts/uninstall.sh --yes               # do it, keep the login and .claude/
+#   ./scripts/uninstall.sh --yes --password    # also delete the saved router login
 #   ./scripts/uninstall.sh --yes --repo-all    # also delete the clone's .claude/
 #
 set -uo pipefail
@@ -171,7 +178,7 @@ for p in "$HOME/.claude/skills/asuswrt" "$HOME/.agents/skills/asuswrt"; do
     do_rm "$p"
   fi
 done
-# Since v0.9.0 the plugin carries userConfig switches, and Claude Code keeps
+# Since v0.8.0 the plugin carries userConfig switches, and Claude Code keeps
 # their values in settings.json under pluginConfigs. Uninstalling the plugin
 # does not necessarily clear them, and a stale entry would silently reapply if
 # the plugin is ever installed again.
@@ -218,6 +225,55 @@ if grep -q '^\[mcp_servers\.asuswrt\]' "$HOME/.codex/config.toml" 2>/dev/null; t
   fi
 fi
 
+# ------------------------------------------------------------ Gemini CLI ---
+say ""
+say "Gemini CLI"
+# `gemini mcp add --scope user` writes into ~/.gemini/settings.json; a project
+# scope writes .gemini/settings.json beside the checkout. Only a real
+# mcpServers entry counts, so parse the file rather than grep for the name.
+GEMINI_USER="$HOME/.gemini/settings.json"
+gemini_mcp_registered() {
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$GEMINI_USER" .gemini/settings.json <<'GPY' 2>/dev/null
+import json
+import sys
+
+for path in sys.argv[1:]:
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (FileNotFoundError, OSError, ValueError):
+        continue
+
+    if "asuswrt" in (data.get("mcpServers") or {}):
+        sys.exit(0)
+
+sys.exit(1)
+GPY
+    return
+  fi
+
+  grep -q '"asuswrt"' "$GEMINI_USER" 2>/dev/null
+}
+
+if gemini_mcp_registered; then
+  if command -v gemini >/dev/null 2>&1; then
+    hit "gemini mcp remove asuswrt  (user and project scopes)"
+    if [ "$APPLY" -eq 1 ]; then
+      for scope in user project; do
+        gemini mcp remove asuswrt --scope "$scope" >/dev/null 2>&1
+      done
+      if gemini_mcp_registered; then
+        say "      ! still registered — delete the asuswrt mcpServers entry from ~/.gemini/settings.json or .gemini/settings.json"
+      else
+        ran
+      fi
+    fi
+  else
+    hit "asuswrt under mcpServers in ~/.gemini/settings.json or .gemini/settings.json — gemini is not on PATH, remove that entry by hand"
+  fi
+fi
+
 # --------------------------------------------------------- Claude Desktop ---
 say ""
 say "Claude Desktop"
@@ -235,7 +291,7 @@ sys.exit(0 if 'asuswrt' in (d.get('mcpServers') or {}) else 1)
   fi
 fi
 # The extension is two paths named for its id (local.mcpb.<author>.<name>): the
-# unpacked bundle, which since v0.9.0 also holds the .venv uv builds on first
+# unpacked bundle, which since v0.8.0 also holds the .venv uv builds on first
 # launch, and a one-line enabled/disabled file beside it.
 while IFS= read -r p; do
   [ -n "$p" ] || continue
@@ -264,26 +320,41 @@ json.dump(d, open(p,'w'), indent=2)
     hit "asuswrt in extensions-installations.json — python3 missing, drop the entry by hand"
   fi
 fi
-# A downloaded bundle, if it is still sitting where the README's curl left it.
-for p in "$HOME/asuswrt.mcpb" "$HOME/Downloads/asuswrt.mcpb" \
-         "$HOME/asuswrt-0.8.0-legacy.mcpb" "$HOME/Downloads/asuswrt-0.8.0-legacy.mcpb"; do
-  if [ -e "$p" ]; then
-    hit "rm ${p/#$HOME/\~}"
+# A downloaded bundle, if one is still sitting where the README's curl left it.
+# Matched on the name this project gives its bundles rather than on a version,
+# so the file from any release — including the legacy one — is caught.
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  hit "rm ${p/#$HOME/\~}"
+  do_rm "$p"
+done < <(find "$HOME" "$HOME/Downloads" -maxdepth 1 -name 'asuswrt*.mcpb' 2>/dev/null)
+
+# ------------------------------------------------------------ credentials ---
+say ""
+say "Saved router login"
+# `asuswrt setup` and the ChatGPT connector installer write ~/.config/asuswrt/.env
+# with mode 0600. $ASUSWRT_ENV_FILE moves that file elsewhere, so remove what it
+# points at too — but only when it is somewhere the directory sweep will miss.
+CRED_PATHS=("$HOME/.config/asuswrt")
+case "${ASUSWRT_ENV_FILE:-}" in
+  ""|"$HOME/.config/asuswrt"/*) ;;
+  *) CRED_PATHS+=("${ASUSWRT_ENV_FILE/#\~/$HOME}") ;;
+esac
+for p in "${CRED_PATHS[@]}"; do
+  [ -e "$p" ] || continue
+  if [ "$DROP_PASSWORD" -eq 1 ]; then
+    hit "rm -rf ${p/#$HOME/\~}"
     do_rm "$p"
+  else
+    say "  ${p/#$HOME/\~} kept (pass --password to delete it too)"
   fi
 done
-
-# --------------------------------------------------------------- password ---
-say ""
-say "Saved password"
-if [ -d "$HOME/.config/asuswrt" ]; then
-  if [ "$DROP_PASSWORD" -eq 1 ]; then
-    hit "rm -rf ~/.config/asuswrt"
-    do_rm "$HOME/.config/asuswrt"
-  else
-    say "  ~/.config/asuswrt kept (pass --password to delete it too)"
-  fi
-fi
+# A password typed into the Claude Code plugin dialog or the Claude Desktop
+# extension lives in that app's secure storage, not in a file this script owns.
+# Removing the plugin or extension takes it with it; say so rather than leave
+# someone believing --password reached every copy.
+say "  passwords saved in the Claude Code plugin or Claude Desktop extension go"
+say "  with the plugin or extension itself — the sections above remove those"
 
 # ------------------------------------------------------------- repo state ---
 # Only touches the working directory when it really is a clone of this repo,
@@ -303,6 +374,9 @@ else
   # the like), which a fresh clone would not have anyway. --repo-all drops it.
   CLEAN_ARGS=(-xd)
   [ "$DROP_CLAUDE_DIR" -eq 1 ] || CLEAN_ARGS+=(-e .claude)
+  # A clone can hold its own .env, which is read before ~/.config/asuswrt/.env.
+  # It is a credential file, so --password governs it, not a plain --yes.
+  [ "$DROP_PASSWORD" -eq 1 ] || CLEAN_ARGS+=(-e .env -e ".env.*")
   # Never let git clean delete the script while bash is still reading it.
   # Once this file is committed git clean skips it anyway; this covers the
   # case where it was dropped into the tree untracked.
@@ -327,6 +401,9 @@ else
     fi
   fi
   [ "$DROP_CLAUDE_DIR" -eq 1 ] || say "  .claude/ kept (pass --repo-all to delete it too)"
+  if [ "$DROP_PASSWORD" -eq 0 ] && ls "$REPO"/.env* >/dev/null 2>&1; then
+    say "  .env kept (pass --password to delete it too)"
+  fi
 fi
 
 # ----------------------------------------------------------------- report ---
@@ -336,10 +413,10 @@ if [ "$FOUND" -eq 0 ]; then
 elif [ "$APPLY" -eq 1 ]; then
   say "Removed $DONE of $FOUND items."
   say "Verify: command -v asuswrt        (should print nothing)"
-  if [ "$DROP_CLAUDE_DIR" -eq 1 ]; then
+  if [ "$DROP_CLAUDE_DIR" -eq 1 ] && [ "$DROP_PASSWORD" -eq 1 ]; then
     say "        git status --ignored -s   (should print nothing)"
   else
-    say "        git status --ignored -s   (only the retained .claude/ may appear)"
+    say "        git status --ignored -s   (only retained files, .claude/ or .env, may appear)"
   fi
 else
   say "$FOUND items would be removed. Re-run with --yes."

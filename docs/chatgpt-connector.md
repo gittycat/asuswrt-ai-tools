@@ -25,7 +25,31 @@ Associate it with the ChatGPT workspace in which the app will be created.
 Create a restricted runtime key with **Tunnels Read + Use**. Do not use an
 OpenAI admin key as the long-running connector key.
 
-## Install from GitHub Releases
+## Install
+
+Run this in a terminal. It downloads the latest release, checks it against the
+published SHA-256, and runs the installer:
+
+    /bin/sh -c "$(curl -fsSL https://raw.githubusercontent.com/gittycat/asuswrt-ai-tools/main/scripts/install-connector.sh)"
+
+The installer prompts for the router password, tunnel ID, and runtime key. The
+key prompts are hidden. Existing router configuration at
+~/.config/asuswrt/.env is reused.
+
+Read-only is the default. To expose ordinary write tools, or to additionally
+expose reboot and firmware upgrade, pass the permission level after a `--`:
+
+    /bin/sh -c "$(curl -fsSL https://raw.githubusercontent.com/gittycat/asuswrt-ai-tools/main/scripts/install-connector.sh)" -- --permission writes
+    /bin/sh -c "$(curl -fsSL https://raw.githubusercontent.com/gittycat/asuswrt-ai-tools/main/scripts/install-connector.sh)" -- --permission dangerous
+
+The `--` is what `sh -c` needs to stop reading the next word as the script
+name. `-- --version 0.8.0` installs a release other than the latest.
+
+Use the `sh -c "$(curl ...)"` form rather than piping into `sh`: a pipe takes
+over the script's standard input, and the installer would have no terminal to
+read the password and keys from.
+
+## Install from the archive instead
 
 Download the archive and its .sha256 file from the matching project release:
 
@@ -39,21 +63,11 @@ Verify, unpack, and install:
     cd asuswrt-chatgpt-connector-v<VERSION>-macos27-arm64
     ./install.sh
 
-The installer prompts for the router password, tunnel ID, and runtime key. The
-key prompts are hidden. Existing router configuration at
-~/.config/asuswrt/.env is reused.
-
 The development archive is checksum-protected but is not yet notarized by this
-project. If macOS blocks it, review the download and approve it under
-**System Settings → Privacy & Security**.
-
-Read-only is the default. To expose ordinary write tools:
-
-    ./install.sh --permission writes
-
-To additionally expose reboot and firmware upgrade:
-
-    ./install.sh --permission dangerous
+project. A browser download is quarantined by macOS; if it blocks the archive,
+review the download and approve it under **System Settings → Privacy &
+Security**. The one-line install above avoids this: curl sets no quarantine
+flag.
 
 After changing the permission level, refresh the app's tool catalogue in
 ChatGPT.

@@ -61,10 +61,16 @@ It detects the router address from the default gateway.
 
 **ChatGPT**
 
-An extra connector program needs to be installed first for ChatGPT. Download it
-from the [latest release](https://github.com/gittycat/asuswrt-ai-tools/releases),
-then follow the [ChatGPT connector guide](docs/chatgpt-connector.md). Its
-installer asks for the router password without echoing it.
+An extra connector program needs to be installed first for ChatGPT, along with
+an OpenAI tunnel. Set the tunnel up with the
+[ChatGPT connector guide](docs/chatgpt-connector.md), then run:
+
+```bash
+/bin/sh -c "$(curl -fsSL https://raw.githubusercontent.com/gittycat/asuswrt-ai-tools/main/scripts/install-connector.sh)"
+```
+
+It downloads the latest release, verifies its checksum, and asks for the router
+password, tunnel ID and runtime key without echoing them.
 
 Connections start read-only. See the
 [permissions reference](docs/reference.md#what-the-agent-is-allowed-to-do) to

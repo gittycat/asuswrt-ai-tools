@@ -21,7 +21,6 @@ mcp = [
 asuswrt = "asuswrt.cli.main:main"
 asuswrt-probe = "asuswrt.probe:main"
 asuswrt-mcp = "asuswrt.mcp_server:main"
-asuswrt-chatgpt-connector = "asuswrt.chatgpt_connector:main"
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]

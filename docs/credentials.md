@@ -9,7 +9,6 @@ the local server through an environment variable or a local config file.
 | --- | --- | --- |
 | Claude Desktop | Masked extension install dialog | Host secure storage (macOS Keychain) |
 | Claude Code | Masked plugin install dialog | Claude Code secure storage, not `settings.json` |
-| ChatGPT connector | Hidden terminal prompt during install | `~/.config/asuswrt/.env`, mode `0600` |
 | Codex, Gemini CLI, or terminal | Hidden terminal prompt from `asuswrt setup` | `~/.config/asuswrt/.env`, mode `0600` |
 
 The Claude dialogs also offer optional username and router address fields. A
@@ -75,5 +74,4 @@ it too, run from a project clone:
 ./scripts/uninstall.sh --yes --password
 ```
 
-For the ChatGPT connector alone, use
-`asuswrt-chatgpt-connector uninstall --router-config`.
+

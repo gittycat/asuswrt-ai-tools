@@ -11,8 +11,7 @@ stores the password, config precedence, custom addresses, HTTPS, and ports.
 
 ## What `uv tool install` puts where
 
-`asuswrt`, `asuswrt-mcp`, `asuswrt-probe` and `asuswrt-chatgpt-connector` land
-in `~/.local/bin`. Run
+`asuswrt`, `asuswrt-mcp` and `asuswrt-probe` land in `~/.local/bin`. Run
 `uv tool update-shell` once if that directory is not on your `PATH`. GUI apps
 never inherit your shell `PATH`, which is why a hand-written Claude Desktop
 config has to use an absolute path.
@@ -36,8 +35,7 @@ Update the Claude Code plugin later with
 
 `scripts/uninstall.sh` removes every installed component: the command binaries
 and uv tool directory, the MCP registration in Claude Code (all three scopes)
-and in Codex, the ChatGPT connector LaunchAgent and local state, the plugin, its
-marketplace entry and saved `pluginConfigs` switches, the skill leftovers from
+and in Codex, the plugin, its marketplace entry and saved `pluginConfigs` switches, the skill leftovers from
 before v0.8.0, and the Claude Desktop extension — its unpacked directory, the
 virtualenv uv built inside it, its enabled/disabled file, and its row in
 `extensions-installations.json`, which is the one that makes Desktop stop
@@ -46,9 +44,7 @@ listing it. It skips whatever is not there.
 It deliberately leaves tool-owned workspace history and per-project state
 alone, including Claude Code transcripts and Codex companion state. It also
 leaves `~/.cache/uv`, which is shared with every other uv project on the
-machine. Removing the local ChatGPT connector does not delete the remote OpenAI
-tunnel or the app in ChatGPT; remove those separately if they are no longer
-needed.
+machine.
 
 ```bash
 ./scripts/uninstall.sh          # dry run, lists what it would remove
@@ -311,6 +307,12 @@ env = { ASUSWRT_MCP_ALLOW_WRITES = "1" }
 
 Any host implementing the MCP spec works unchanged: the server is
 `asuswrt-mcp`, over stdio.
+
+The ChatGPT desktop app shares `~/.codex/config.toml` with Codex CLI, so
+`codex mcp add` registers the server for both. ChatGPT on the web and on
+phones cannot run a local stdio server; reaching the router from those would
+need the server published at a public HTTPS endpoint through a tunnel, which
+this project does not ship.
 
 ## Adding a setting the tool does not cover
 

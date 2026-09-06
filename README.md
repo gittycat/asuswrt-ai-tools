@@ -10,7 +10,7 @@ It works directly with the following AI agents:
 - Codex
 - Claude Desktop
 - Gemini CLI
-- ChatGPT — requires the macOS connector
+- ChatGPT — desktop app only
 
 ## Installation
 
@@ -61,20 +61,18 @@ It detects the router address from the default gateway.
 
 **ChatGPT**
 
-An extra connector program needs to be installed first for ChatGPT, along with
-an OpenAI tunnel. Set the tunnel up with the
-[ChatGPT connector guide](docs/chatgpt-connector.md), then run:
-
 ```bash
-/bin/sh -c "$(curl -fsSL https://raw.githubusercontent.com/gittycat/asuswrt-ai-tools/main/scripts/install-connector.sh)"
+uv tool install "asuswrt[mcp] @ git+https://github.com/gittycat/asuswrt-ai-tools"
+asuswrt setup
+codex mcp add asuswrt -- asuswrt-mcp
 ```
 
-It downloads the latest release, verifies its checksum, and asks for the router
-password, tunnel ID and runtime key without echoing them.
+The ChatGPT desktop app shares its MCP configuration with Codex CLI, so the
+command above is the whole setup. Restart the app and `asuswrt` appears under
+**Settings → MCP servers**.
 
-Connections start read-only. See the
-[permissions reference](docs/reference.md#what-the-agent-is-allowed-to-do) to
-allow changes.
+This needs the ChatGPT desktop app, not ChatGPT Classic. ChatGPT on the web
+and on phones cannot run a local MCP server.
 
 If the router is not your default gateway, enter its address in the Claude
 dialog or run `asuswrt setup --host ADDRESS`. `ROUTER_SSL` and `ROUTER_PORT`
@@ -152,8 +150,6 @@ routers may work.
 - [Reference](docs/reference.md) — commands, permissions, safety, and limits
 - [Settings](docs/settings.md) — supported router settings and technical notes
 - [Troubleshooting](docs/troubleshooting.md) — common connection problems
-- [ChatGPT connector](docs/chatgpt-connector.md) — install and manage the
-  connector
 
 ## Credits
 

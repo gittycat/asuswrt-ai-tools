@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Remove every installed component of this project from a Mac: the CLI, the
-# MCP registrations in Claude Code, Codex and Gemini CLI, the ChatGPT
-# connector, the Claude Code plugin and its saved settings, the skill leftovers
+# MCP registrations in Claude Code, Codex and Gemini CLI, the Claude Code
+# plugin and its saved settings, the skill leftovers
 # from before v0.8.0, and the Claude Desktop extension along with its
 # virtualenv and install record. Safe to run when only some of them are
 # present. Tool-owned workspace history is left alone.
@@ -17,8 +17,7 @@
 # scratch files, anything git does not ignore — are left where they are.
 #
 # The router login stays put unless --password is passed. Since v0.8.0 that
-# login is written by `asuswrt setup` (and by the ChatGPT connector installer)
-# to ~/.config/asuswrt/.env, or to $ASUSWRT_ENV_FILE when that is set; a clone
+# login is written by `asuswrt setup` to ~/.config/asuswrt/.env, or to $ASUSWRT_ENV_FILE when that is set; a clone
 # may also hold its own .env. A password typed into the Claude Code plugin or
 # Claude Desktop extension dialog is not a file at all — it lives in that app's
 # secure storage and leaves with the plugin or extension.
@@ -96,29 +95,12 @@ do_rm() {
   rm -rf "$1" 2>/dev/null || fail "${2:-$LAST}"
 }
 
-# ------------------------------------------------------ ChatGPT connector ---
-CONNECTOR_LABEL="io.github.gittycat.asuswrt-chatgpt-connector"
-CONNECTOR_PLIST="$HOME/Library/LaunchAgents/$CONNECTOR_LABEL.plist"
-CONNECTOR_STATE="$HOME/Library/Application Support/asuswrt-chatgpt-connector"
-# Stopping the agent is part of removing its plist, not a thing of its own.
-if [ "$APPLY" -eq 1 ] && { [ -e "$CONNECTOR_PLIST" ] || [ -d "$CONNECTOR_STATE" ]; }; then
-  launchctl bootout "gui/$UID/$CONNECTOR_LABEL" >/dev/null 2>&1 || true
-fi
-if [ -e "$CONNECTOR_PLIST" ]; then
-  hit "$(short "$CONNECTOR_PLIST")"
-  do_rm "$CONNECTOR_PLIST"
-fi
-if [ -d "$CONNECTOR_STATE" ]; then
-  hit "$(short "$CONNECTOR_STATE")"
-  do_rm "$CONNECTOR_STATE"
-fi
-
 # ---------------------------------------------------------------- the CLI ---
 # Everything is found before anything is removed, so a dry run and a real run
 # list exactly the same paths — `uv tool uninstall` takes most of them with it.
 CLI_PATHS=()
 CLI_N=0
-for f in asuswrt asuswrt-mcp asuswrt-probe asuswrt-chatgpt-connector; do
+for f in asuswrt asuswrt-mcp asuswrt-probe; do
   if [ -e "$HOME/.local/bin/$f" ] || [ -L "$HOME/.local/bin/$f" ]; then
     CLI_PATHS[$CLI_N]="$HOME/.local/bin/$f"
     CLI_N=$((CLI_N+1))
@@ -351,8 +333,7 @@ while IFS= read -r p; do
 done < <(find "$HOME" "$HOME/Downloads" -maxdepth 1 -name 'asuswrt*.mcpb' 2>/dev/null)
 
 # ------------------------------------------------------------ credentials ---
-# `asuswrt setup` and the ChatGPT connector installer write ~/.config/asuswrt/.env
-# with mode 0600. $ASUSWRT_ENV_FILE moves that file elsewhere, so remove what it
+# `asuswrt setup` writes ~/.config/asuswrt/.env with mode 0600. $ASUSWRT_ENV_FILE moves that file elsewhere, so remove what it
 # points at too — but only when it is somewhere the directory sweep will miss.
 CRED_PATHS=("$HOME/.config/asuswrt")
 case "${ASUSWRT_ENV_FILE:-}" in

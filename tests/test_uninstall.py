@@ -82,7 +82,7 @@ def test_uninstall_detects_only_real_mcp_entries(tmp_path, state, project_mcp):
 def test_uninstall_removes_the_cli_shims(tmp_path, args):
     bin_dir = tmp_path / "home" / ".local" / "bin"
     bin_dir.mkdir(parents=True)
-    shims = ["asuswrt", "asuswrt-mcp", "asuswrt-probe", "asuswrt-chatgpt-connector"]
+    shims = ["asuswrt", "asuswrt-mcp", "asuswrt-probe"]
     for name in shims:
         (bin_dir / name).touch()
 
@@ -104,33 +104,6 @@ def test_uninstall_abbreviates_home_as_a_bare_tilde(tmp_path):
 
     assert "  ~/.local/bin/asuswrt" in result.stdout
     assert "\\~" not in result.stdout
-
-
-def test_uninstall_removes_chatgpt_connector_state(tmp_path):
-    home = tmp_path / "home"
-    label = "io.github.gittycat.asuswrt-chatgpt-connector"
-    plist = home / "Library" / "LaunchAgents" / f"{label}.plist"
-    state_dir = (
-        home
-        / "Library"
-        / "Application Support"
-        / "asuswrt-chatgpt-connector"
-    )
-    plist.parent.mkdir(parents=True)
-    plist.write_text("plist")
-    state_dir.mkdir(parents=True)
-    (state_dir / "control-plane-api-key").write_text("secret")
-
-    preview = run_uninstall(tmp_path, {})
-    assert "2 items would be removed:" in preview.stdout
-    assert f"  ~/Library/LaunchAgents/{label}.plist" in preview.stdout
-    assert "  ~/Library/Application Support/asuswrt-chatgpt-connector" in preview.stdout
-    assert plist.exists()
-    assert state_dir.exists()
-
-    run_uninstall(tmp_path, {}, "--yes")
-    assert not plist.exists()
-    assert not state_dir.exists()
 
 
 def test_uninstall_reports_gemini_cli_registration(tmp_path):

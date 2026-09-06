@@ -4,16 +4,10 @@ Nothing here is needed to install or use the tool. It is here for edge cases,
 and for the agent reading this file. Start with the
 [README](../README.md).
 
-## Where the password is read from
+## Router credentials
 
-First match wins:
-
-1. `$ASUSWRT_ENV_FILE`, if you set it
-2. `.env` in the current directory
-3. `~/.config/asuswrt/.env`
-
-The CLI and the MCP server look in the same places. If a command reports the
-password is missing, it prints every path it searched.
+See [Router credentials](credentials.md) for how each installer collects and
+stores the password, config precedence, custom addresses, HTTPS, and ports.
 
 ## What `uv tool install` puts where
 
@@ -22,7 +16,7 @@ password is missing, it prints every path it searched.
 never inherit your shell `PATH`, which is why a hand-written Claude Desktop
 config has to use an absolute path.
 
-Since v0.9.0 this is needed only for the terminal command, for Codex, and for a
+Since v0.8.0 this is needed only for the terminal command, for Codex, and for a
 hand-registered `claude mcp add`. The Claude Code plugin and the Claude Desktop
 extension each carry the server and run it through `uv run`, so neither needs
 anything installed globally beyond uv itself.
@@ -171,13 +165,13 @@ uv bundle. Claude Desktop runs `uv sync` first, then the manifest's command:
 uv run --directory ${__dirname} --locked --no-dev --extra mcp asuswrt-mcp
 ```
 
-Until v0.9.0 the bundle carried no server at all, only a shell launcher that
+Until v0.8.0 the bundle carried no server at all, only a shell launcher that
 located a separately `uv tool install`-ed `asuswrt-mcp`. That existed because
 Claude Desktop ships no Python runtime and refused to install a Python bundle
 without a system Python; the uv runtime is the supported fix for exactly that
 ([mcpb#84](https://github.com/modelcontextprotocol/mcpb/issues/84)). The last
 launcher-based bundle is kept at
-`extension/legacy/asuswrt-0.8.0-legacy.mcpb` for hosts too old to read a 0.4
+`extension/legacy/asuswrt-legacy.mcpb` for hosts too old to read a 0.4
 manifest.
 
 Two things to know when working on it:

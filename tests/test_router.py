@@ -73,9 +73,8 @@ def test_missing_password_names_every_path_it_searched(monkeypatch, tmp_path):
         load_config()
 
     message = str(exc.value)
-    assert "ROUTER_PASS is not set" in message
+    assert "asuswrt setup" in message
     assert str(env) in message
-    assert "env.example" in message
 
 
 def test_config_defaults_fill_in_around_the_password(monkeypatch, tmp_path):
@@ -91,6 +90,41 @@ def test_config_defaults_fill_in_around_the_password(monkeypatch, tmp_path):
         "admin",
         False,
         None,
+    )
+
+
+def test_blank_installer_fields_fall_back_to_the_defaults(monkeypatch, tmp_path):
+    """A GUI installer sends "" for a field left blank, not an absent name."""
+    monkeypatch.setenv("ASUSWRT_ENV_FILE", str(_empty_env(tmp_path)))
+    monkeypatch.setenv("ROUTER_PASS", "secret")
+    monkeypatch.setattr("asuswrt.router.detect_gateway", lambda: "10.0.0.1")
+    for name in ("ROUTER_HOST", "ROUTER_USER", "ROUTER_SSL", "ROUTER_PORT"):
+        monkeypatch.setenv(name, "")
+
+    config = load_config()
+    assert (config.host, config.username, config.use_ssl, config.port) == (
+        "10.0.0.1",
+        "admin",
+        False,
+        None,
+    )
+
+
+def test_a_blank_installer_password_does_not_shadow_the_env_file(
+    monkeypatch, tmp_path
+):
+    """load_dotenv() does not override, so "" would win over a working file."""
+    env = tmp_path / "configured.env"
+    env.write_text("ROUTER_HOST=192.168.50.1\nROUTER_USER=me\nROUTER_PASS=secret\n")
+    monkeypatch.setenv("ASUSWRT_ENV_FILE", str(env))
+    monkeypatch.setenv("ROUTER_PASS", "")
+    monkeypatch.setenv("ROUTER_USER", "")
+
+    config = load_config()
+    assert (config.host, config.username, config.password) == (
+        "192.168.50.1",
+        "me",
+        "secret",
     )
 
 
@@ -128,7 +162,7 @@ def test_undetectable_gateway_asks_for_router_host_rather_than_guessing(
         load_config()
 
     message = str(exc.value)
-    assert "ROUTER_HOST is not set" in message
+    assert "asuswrt setup --host" in message
     assert str(env) in message
     assert "192.168" not in message
 

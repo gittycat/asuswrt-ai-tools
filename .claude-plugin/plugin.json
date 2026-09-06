@@ -1,8 +1,8 @@
 {
   "name": "asuswrt",
   "displayName": "ASUS Router Control",
-  "version": "0.9.0",
-  "description": "Inspect and control an ASUS (AsusWRT) router from Claude Code — clients, WAN, firewall state, port forwarding, guest WiFi, WiFi security. Needs uv on PATH; it fetches Python and the dependencies on first run. Put the router's admin password in ~/.config/asuswrt/.env.",
+  "version": "0.8.0",
+  "description": "Inspect and control an ASUS (AsusWRT) router from Claude Code — clients, WAN, firewall state, port forwarding, guest WiFi, WiFi security. Needs uv on PATH; it fetches Python and the dependencies on first run. It asks for the router's admin password when you install it.",
   "author": {
     "name": "Main Admin",
     "email": "accounts@kiluna.com"
@@ -11,6 +11,25 @@
   "license": "MIT",
   "keywords": ["asus", "asuswrt", "router", "network", "port-forwarding", "home-network", "wifi", "wpa3"],
   "userConfig": {
+    "router_password": {
+      "type": "string",
+      "title": "Router admin password",
+      "description": "The password for the router's web interface. Stored in this machine's secure storage and never sent to a model. Leave blank if you already keep it in ~/.config/asuswrt/.env.",
+      "sensitive": true,
+      "required": false
+    },
+    "router_user": {
+      "type": "string",
+      "title": "Router admin username",
+      "description": "Usually admin. Leave blank for admin.",
+      "required": false
+    },
+    "router_host": {
+      "type": "string",
+      "title": "Router address",
+      "description": "Leave blank to use the default gateway, which is the right answer on almost every home network.",
+      "required": false
+    },
     "allow_writes": {
       "type": "boolean",
       "title": "Allow changes to the router",
@@ -40,6 +59,9 @@
         "asuswrt-mcp"
       ],
       "env": {
+        "ROUTER_PASS": "${user_config.router_password}",
+        "ROUTER_USER": "${user_config.router_user}",
+        "ROUTER_HOST": "${user_config.router_host}",
         "ASUSWRT_MCP_ALLOW_WRITES": "${user_config.allow_writes}",
         "ASUSWRT_MCP_ALLOW_DANGEROUS": "${user_config.allow_dangerous}"
       }

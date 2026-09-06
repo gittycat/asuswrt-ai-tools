@@ -9,7 +9,6 @@ property list or on a process command line.
 from __future__ import annotations
 
 import argparse
-import getpass
 import json
 import os
 import platform
@@ -21,6 +20,14 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from asuswrt import config_setup
+from asuswrt.config_setup import (
+    dotenv_quote as _dotenv_quote,
+    private_write as _private_write,
+    prompt_nonempty as _prompt_nonempty,
+)
+from asuswrt.router import ConfigError
 
 
 LABEL = "io.github.gittycat.asuswrt-chatgpt-connector"
@@ -91,16 +98,6 @@ def require_supported_platform() -> None:
         raise ConnectorError("could not determine the macOS version") from None
     if major < 27:
         raise ConnectorError("asuswrt-chatgpt-connector requires macOS 27 or later")
-
-
-def _dotenv_quote(value: str) -> str:
-    escaped = (
-        value.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-    )
-    return f'"{escaped}"'
 
 
 def validate_tunnel_id(value: str) -> str:
@@ -179,19 +176,6 @@ def render_plist(paths: Paths) -> bytes:
     return plistlib.dumps(payload, fmt=plistlib.FMT_XML, sort_keys=True)
 
 
-def _private_write(path: Path, contents: str | bytes, mode: int = 0o600) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-    fd = os.open(path, flags, mode)
-    try:
-        if isinstance(contents, str):
-            contents = contents.encode()
-        os.write(fd, contents)
-        os.fchmod(fd, mode)
-    finally:
-        os.close(fd)
-
-
 def _copy_executable(source: Path, destination: Path) -> None:
     if not source.is_file():
         raise ConnectorError(f"tunnel-client not found: {source}")
@@ -232,27 +216,8 @@ def start_service(paths: Paths) -> None:
         raise ConnectorError("launchctl could not start the connector") from exc
 
 
-def _prompt_nonempty(prompt: str, *, secret: bool = False) -> str:
-    reader = getpass.getpass if secret else input
-    while True:
-        value = reader(prompt).strip()
-        if value:
-            return value
-
-
 def ensure_router_config(paths: Paths) -> None:
-    if paths.router_env.is_file():
-        return
-    print("Router credentials are not configured yet.")
-    username = input("Router username [admin]: ").strip() or "admin"
-    password = _prompt_nonempty("Router password: ", secret=True)
-    if "\x00" in username or "\x00" in password:
-        raise ConnectorError("router credentials cannot contain a NUL character")
-    contents = (
-        f"ROUTER_USER={_dotenv_quote(username)}\n"
-        f"ROUTER_PASS={_dotenv_quote(password)}\nROUTER_SSL=false\n"
-    )
-    _private_write(paths.router_env, contents)
+    config_setup.ensure_router_config(paths.router_env)
 
 
 def install(
@@ -401,7 +366,7 @@ def main(argv: list[str] | None = None) -> int:
             uninstall(paths, remove_router_config=args.router_config)
             print("Removed the local connector. The remote OpenAI tunnel was not deleted.")
             return 0
-    except (ConnectorError, OSError, subprocess.SubprocessError) as exc:
+    except (ConnectorError, ConfigError, OSError, subprocess.SubprocessError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     raise AssertionError(f"unhandled command: {args.command}")

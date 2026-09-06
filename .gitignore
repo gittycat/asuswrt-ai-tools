@@ -1,7 +1,6 @@
 # Secrets — router host, user and password live here
 .env
 .env.*
-!env.example
 
 # Python
 __pycache__/

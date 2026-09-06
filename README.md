@@ -1,303 +1,139 @@
-# ASUS Router MCP for AI Agents
+# ASUS Router MPC Server for AI agents
 
-Allows you to control a local Asus WRT home router via AI prompts instead of using the Asus web admin interface or ios app.
+This project installs a small python program that allows your AI agents to query and modify some of the settings on your Asus WRT router. The program essentially controls what the AI is allowed to do, which is safer than relying on prompt guardrails only.
 
-Works directly with agents that can start a local MCP server over stdio —
-Claude Code, Codex, Claude Desktop and Gemini CLI among them. ChatGPT connects
-through the optional `asuswrt-chatgpt-connector`, which keeps the stdio server
-local and opens an outbound OpenAI Secure MCP Tunnel.
+Once installed, you can ask questions like "What devices are on my network", "Review the security settings" or "relay incoming port 8808 to my laptop at port 88".
 
-It uses the included small python program, `asuswrt` that speaks the router's
-unpublished HTTP API — the same one the official ASUS mobile app uses. No SSH,
-no scraping the web UI.
+It works directly with the following AI agents:
 
-
----
+- Claude Code
+- Codex
+- Claude Desktop
+- Gemini CLI
+- ChatGPT — requires the macOS connector
 
 ## Installation
 
-You need [uv](https://docs.astral.sh/uv/), your router's **admin** password, and
-a machine on the same network as the router.
+**Requirements:**
+- [uv](https://docs.astral.sh/uv/)
+- Python 3
 
-uv is the only prerequisite. It fetches Python 3.13 and the dependencies itself
-on first run, so there is nothing to install separately — no system Python, no
-virtualenv to manage.
+Your router password is collected locally, stored in secure
+storage or a private config file (~/.config/asuswrt/.env), and never sent to a model.
 
-Save the password first — everything needs it. Then register the MCP server
-with whichever agent you use.
-
-### Save your router password — required
-
-```bash
-mkdir -p ~/.config/asuswrt
-cat > ~/.config/asuswrt/.env <<'EOF'
-ROUTER_USER=admin
-ROUTER_PASS=your-router-password
-EOF
-```
-
-That is the whole configuration — the router's address is your machine's default
-gateway, detected on every run. Use the router's **admin** account; a limited
-family-member account cannot log in.
-
-### Install the MCP server
-
-**ChatGPT** — download the macOS 27 ARM archive from the matching GitHub
-Release, then follow the [connector installation guide](docs/chatgpt-connector.md).
-The connector is distributed from GitHub while it is under active development;
-it is not published in the MCP Registry.
-
-**Claude Code** — the plugin carries the server; nothing else to install:
+**Claude Code**
 
 ```bash
 claude plugin marketplace add gittycat/asuswrt-ai-tools
 claude plugin install asuswrt@asuswrt
 ```
 
-The plugin is read-only until you say otherwise. Its two switches —
-**Allow changes to the router** and **Allow reboot and firmware upgrade** — are
-in the plugin's configuration; turn the first on to let the agent change
-settings, and leave the second off unless you mean it.
+Enter the router password in the masked install dialog. The username and router
+address are optional.
 
-Registering it by hand instead, which needs the `asuswrt-mcp` command on PATH:
+**Claude Desktop**
 
 ```bash
-uv tool install "asuswrt[mcp] @ git+https://github.com/gittycat/asuswrt-ai-tools"
-claude mcp add --scope user asuswrt -- asuswrt-mcp
-
-# or, allowing writes:
-claude mcp add --env ASUSWRT_MCP_ALLOW_WRITES=1 --scope user asuswrt -- asuswrt-mcp
+curl -LO https://raw.githubusercontent.com/gittycat/asuswrt-ai-tools/main/extension/asuswrt.mcpb
+open asuswrt.mcpb
 ```
+
+Enter the router password in the masked install dialog. On Windows, download
+the same file and open it from **Settings → Extensions → Advanced settings**.
 
 **Codex**
 
 ```bash
 uv tool install "asuswrt[mcp] @ git+https://github.com/gittycat/asuswrt-ai-tools"
+asuswrt setup
 codex mcp add asuswrt -- asuswrt-mcp
-
-# or, allowing writes:
-codex mcp add asuswrt --env ASUSWRT_MCP_ALLOW_WRITES=1 -- asuswrt-mcp
 ```
 
-**Claude Desktop** (macOS and Windows — Desktop itself has no Linux build) — one
-step, the extension carries the server:
-
-```bash
-curl -LO https://raw.githubusercontent.com/gittycat/asuswrt-ai-tools/main/extension/asuswrt.mcpb
-open asuswrt.mcpb     # macOS. On Windows: start asuswrt.mcpb
-```
-
-Claude Desktop opens an install dialog with two switches, both off —
-**Allow changes to the router** and **Allow reboot and firmware upgrade**. Turn
-the first on if you want the agent to be able to change settings, and leave the
-second off unless you mean it.
-
-The first launch after installing takes a while and looks like it is hanging:
-that is uv fetching Python and the dependencies. Later launches are immediate.
-
-If double-clicking does nothing, or you would rather download the file in a
-browser, use **Settings → Extensions → Advanced settings → Install Extension…**
-and pick it. Editing
-`claude_desktop_config.json` by hand still works too, and is
-[in the reference](docs/reference.md#claude-desktop-by-hand).
-
-### Check it works
-
-Ask the agent *what model is my asus router?* — if it answers, everything is
-wired up.
-
-To check from a terminal instead, install the command as well and run it:
+**Gemini CLI**
 
 ```bash
 uv tool install "asuswrt[mcp] @ git+https://github.com/gittycat/asuswrt-ai-tools"
-asuswrt system     # your model, firmware and MAC
+asuswrt setup
+gemini mcp add --scope user asuswrt asuswrt-mcp
 ```
 
-If that prints your router, the agent side works too. The command is optional —
-the Claude Code plugin and the Claude Desktop extension both carry their own
-copy of the server and do not need it.
+`asuswrt setup` asks for the username and password without echoing the password.
+It detects the router address from the default gateway.
 
----
+**ChatGPT**
 
-## Try it
+An extra connector program needs to be installed first for ChatGPT.
+[latest release](https://github.com/gittycat/asuswrt-ai-tools/releases),
+then follow the [ChatGPT connector guide](docs/chatgpt-connector.md). Its
+installer asks for the router password without echoing it.
 
-Say **asus** in your first request so the tools load. After that the agent
-keeps using them on its own.
+Connections start read-only. See the
+[permissions reference](docs/reference.md#what-the-agent-is-allowed-to-do) to
+allow changes.
+
+If the router is not your default gateway, enter its address in the Claude
+dialog or run `asuswrt setup --host ADDRESS`. `ROUTER_SSL` and `ROUTER_PORT`
+are config-file-only settings; the dialogs and `asuswrt setup` do not expose
+them. See
+[Router credentials](docs/credentials.md) for details.
+
+### Check
 
 Ask:
 
-```
-What devices are connected to my Asus router?
-Review the security settings on my Asus router
-Is my Asus router's firmware up to date?
-Is the asus router's admin page reachable from the internet?
-The internet feels slow — check the asus router's CPU, memory and WAN
-Which DNS servers is my Asus router using?
-Can devices open their own ports on my Asus router?
+```text
+What model is my ASUS router?
 ```
 
-Change:
+If it answers, the connection is working.
 
+## Try it
+
+The word "router" is too generic so you may want to use **ASUS router** in your first request so the tools load. Once loaded, the MCP server will be used for any requests related to your router or network.
+
+Eg: 
+
+```text
+What's my Asus router security settings.
+
+Is my router firmware up to date?
+The internet feels slow. Check my router's settings.
+Open port 32400 for my media server.
+Turn on the guest Wi-Fi.
+Turn off WPS.
 ```
-Open port 32400 on the asus for my media server
-Turn on the guest WiFi on the asus for my visitors
-Turn off WPS on my Asus router
-Point the asus router's DNS at 8.8.8.8
-Turn off UPnP on my Asus router
-Turn off the lights on my Asus router
-Close the Plex port on the asus again
-```
 
-Every change is previewed first and applied only after you agree.
+Every change to the router settings is previewed and needs your confirmation.
 
----
+## Terminal
 
-## Using it without an agent
-
-The same program works as an ordinary command.
+Install the command and try it directly:
 
 ```bash
-asuswrt show                    # everything below, in one connection
-asuswrt system                  # model, firmware, mac, aimesh
-asuswrt system health           # uptime, cpu, ram, wan
-asuswrt clients --online        # who's connected
-asuswrt wan                     # ip, gateway, dns, protocol
-asuswrt firewall                # firewall, dos, wan admin access, filters
-asuswrt parental                # parental control state and rules
-asuswrt portforward             # port forwarding switch and rules
-asuswrt guest                   # guest networks
-asuswrt wifi                    # wps, wpa mode, frame protection, country
-asuswrt firmware --notes        # installed vs offered version, release note
-asuswrt nvram get vts_rulelist  # any raw setting, by name
+uv tool install "asuswrt[mcp] @ git+https://github.com/gittycat/asuswrt-ai-tools"
+asuswrt setup
+asuswrt system
+asuswrt system health
+asuswrt clients --online
 ```
 
-Add `--json` to any of them for machine-readable output.
+See the [terminal reference](docs/reference.md#using-the-terminal) for all
+commands, JSON output, and making changes.
 
-Changes take two runs. The first is always a dry run:
+## Compatibility
 
-```bash
-asuswrt portforward add --name Plex --port 32400 --to-ip 192.168.50.20
-# → prints what it would do, changes nothing, exits 3
+Tested on an ASUS RT-AX59U with stock firmware. Other AsusWRT and AsusWRT-Merlin
+routers may work.
 
-asuswrt portforward add --name Plex --port 32400 --to-ip 192.168.50.20 --yes
-# → applies it
-```
+## Docs
 
-What can be changed at all: **port forwarding** (add, remove, enable, disable),
-**guest WiFi** (any of the six networks), **WiFi security** (WPS, WPA2/WPA3
-mode, frame protection, country code), **parental control** (on or off),
-**firmware upgrade** and **reboot**.
-
----
-
-## Built for agents
-
-A human reading a router's web UI notices when something looks wrong. An agent
-does not. So the judgement lives in the tool, where a model cannot talk its way
-around it, rather than in instructions it is asked to follow.
-
-- **Nothing changes unless you say so.** A mutation without `--yes` prints what
-  it *would* do and exits 3; an MCP write without `confirm: true` returns a
-  preview. Silence is never approval, so any command is safe to run once.
-- **No raw writes.** `asuswrt nvram get` reads any setting on the router, and
-  there is deliberately no `set`. Blind raw writes are how a working router
-  config gets wrecked. Only the reviewed, named commands can change anything.
-- **Changes are read back, not assumed.** The router happily accepts a WiFi
-  country code and then ignores it. Every WiFi command re-reads the setting,
-  prints `before -> after`, and fails if nothing moved.
-- **Predictable, guessable grammar.** Noun then verb, `show` as the only read
-  verb, `--json` on every read. An agent can reach the right command without
-  hunting through help output, and never has to parse a table.
-- **The likely mistakes are blocked in code.** A duplicate port needs
-  `--force`; `upgrade_firmware` needs the exact version string that the check
-  returned; the tools refuse to reboot unless you used the word; MCP write
-  tools are hidden rather than refused, so an agent cannot retry one into
-  working.
-- **Errors carry their own diagnosis.** `No route to host`, for example, has
-  several causes, and the message lists them plus a `curl` check that separates
-  them — so the agent relays a real answer instead of inventing one.
-- **Your password stays local.** It lives in a `.env` file outside this
-  repository, is read only by the program running on your machine, and is never
-  sent to a model.
-
----
-
-## Limitations
-
-- **One request at a time.** Every command and every MCP tool call logs in, does
-  its work, and logs out, costing about a second. Fine for asking a few
-  questions; the wrong tool for continuous monitoring.
-- **Personal use, not a service.** One person, one router. Do not put it behind
-  a web app or share it between users.
-- **One router per config.** The detected gateway, or `ROUTER_HOST`, is a single
-  address. Individual AiMesh nodes cannot be addressed.
-- **`No route to host` has more than one cause.** It is returned both by an
-  absent router and by a local machine that refuses to route to it — a stale ARP
-  entry, or macOS Local Network privacy. See
-  [`docs/troubleshooting.md`](docs/troubleshooting.md).
-- **Content filters are read-only.** URL and keyword rules can be read but not
-  changed, and their setting names are unconfirmed. If `asuswrt firewall` shows
-  `? (None)`, the name is wrong for your firmware.
-- **Parental control is one switch.** On or off works; per-device rules still
-  need the web UI.
-- **WiFi control is partial.** WPS, WPA mode, frame protection and country code
-  can be changed. SSID, password, channel and bandwidth cannot.
-- **UPnP is a single switch, and the off→on→off round trip is untested.** The
-  three UPnP variables are all written and read back, but they were already off
-  on the router this was built against, so a genuine on→off transition has not
-  been confirmed on hardware. Check `asuswrt upnp` after disabling it.
-- **DNS control is the WAN pair only.** The resolvers the router forwards to can
-  be set, or handed back to the ISP. IPv6 resolvers, per-client DNS Filter rules
-  and DNS-over-TLS profiles still need the web UI. A successful write proves the
-  value stuck in nvram, not that resolution changed — verify with a lookup.
-- **The country code may be locked.** Stock firmware often derives it from the
-  hardware model and ignores the change. The command tells you when that
-  happens; the web UI is the fallback.
-- **A firmware update can break this.** None of this is a supported API.
-
-## Two settings this project will not turn on
-
-Both come up in every security review of an ASUS router, so the tools treat them
-as settled rather than raise them with you each time. If you disagree, each is
-one checkbox away in the web UI — this project simply will not propose them.
-
-- **AiProtection**, and with it Traffic Analyzer, Apps Analyzer, Adaptive QoS,
-  Game Boost and Web History. All of them are gated behind a single bundled
-  Trend Micro EULA: accepting it for any one feature starts the Trend Micro DPI
-  engine and sends browsing data off the router. It costs no money — the price
-  is the data. So `TM_EULA=0` and `bwdpi_db_enable=0` are the expected reading
-  here, not a misconfiguration. The sub-flags `wrs_mals_enable`, `wrs_cc_enable`
-  and `wrs_vp_enable` can show `1` while the engine is off; that means
-  configured but not running, which is the desired end state.
-- **DoS protection** (`fw_dos_x`). It adds firewall rules limiting new
-  connections and ICMP to roughly one packet per second. The community
-  consensus on SNBForums is that this stops nothing real — against an actual
-  flood the uplink saturates long before the router matters — while it does
-  break legitimate traffic, with users reporting they had to disable it for
-  Cloudflare and for media servers. `0` is both the AsusWRT default and the
-  right value for a home router.
-
-Sources for both are in
-[`settings.md`](docs/settings.md#features-with-a-settled-answer).
-
-Tested on an ASUS RT-AX59U running stock firmware `3.0.0.4` (not Merlin), with
-the `asusrouter` library 1.21. Other AsusWRT routers should work — the library
-lists 27 confirmed models from WiFi 4 through WiFi 7, on stock and Merlin — but
-the details in [`settings.md`](docs/settings.md) were
-confirmed on an RT-AX59U only. Two data types (`system`, `temperature`) return
-nothing on this model and are not used.
-
----
-
-## Details
-
-Install paths, where the password is read from, the MCP
-tool list and its two-call writes, the Claude Desktop extension, and how to add
-a setting the tool does not cover are in
-[`docs/reference.md`](docs/reference.md). Problems are in
-[`docs/troubleshooting.md`](docs/troubleshooting.md).
-
----
+- [Router credentials](docs/credentials.md) — setup, storage, and custom
+  connection settings
+- [Reference](docs/reference.md) — commands, permissions, safety, and limits
+- [Settings](docs/settings.md) — supported router settings and technical notes
+- [Troubleshooting](docs/troubleshooting.md) — common connection problems
+- [ChatGPT connector](docs/chatgpt-connector.md) — install and manage the
+  connector
 
 ## Credits
 

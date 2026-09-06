@@ -20,7 +20,7 @@ from asusrouter.modules.parental_control import AsusParentalControl
 from asusrouter.modules.port_forwarding import AsusPortForwarding, PortForwardingRule
 from asusrouter.modules.wlan import AsusWLAN
 
-from asuswrt import ops
+from asuswrt import config_setup, ops
 from asuswrt.cli import render
 from asuswrt.ops import (
     CPU_SAMPLE_SECONDS,
@@ -586,6 +586,21 @@ async def cmd_firmware_upgrade(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------
+# Credentials
+# --------------------------------------------------------------------------
+
+
+async def cmd_setup(args: argparse.Namespace) -> int:
+    """Prompt for the router login and write it out.
+
+    Async only because main() runs every command through asyncio.run(); the
+    prompting itself is ordinary blocking input, which is what a terminal
+    wants here.
+    """
+    return config_setup.run_setup(force=args.force, host=args.host)
+
+
+# --------------------------------------------------------------------------
 # Raw access / system
 # --------------------------------------------------------------------------
 
@@ -691,6 +706,17 @@ def build_parser() -> argparse.ArgumentParser:
         )
         sp.set_defaults(func=read)
         return verbs
+
+    # -- credentials -------------------------------------------------------
+    p = sub.add_parser(
+        "setup", help="save the router login to ~/.config/asuswrt/.env"
+    )
+    p.add_argument("--force", action="store_true",
+                   help="replace an existing credential file")
+    p.add_argument("--host", metavar="ADDRESS",
+                   help="the router's address; only needed when the default "
+                        "gateway is not it")
+    p.set_defaults(func=cmd_setup)
 
     # -- everything at once ------------------------------------------------
     p = sub.add_parser(

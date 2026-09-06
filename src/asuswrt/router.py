@@ -29,6 +29,15 @@ from dotenv import load_dotenv
 from asusrouter import AsusData, AsusRouter
 
 
+ROUTER_ENV_NAMES = (
+    "ROUTER_HOST",
+    "ROUTER_USER",
+    "ROUTER_PASS",
+    "ROUTER_SSL",
+    "ROUTER_PORT",
+)
+
+
 class ConfigError(RuntimeError):
     """Raised when the router credentials are missing or unusable."""
 
@@ -114,6 +123,22 @@ def _searched_paths() -> str:
     return "\n  ".join(str(path) for path in config_paths())
 
 
+def _drop_blank_env() -> None:
+    """Unset any ROUTER_* variable that is present but empty.
+
+    The GUI installers (the Claude Code plugin dialog, the Claude Desktop
+    extension) substitute an empty string for a field the user left blank, so
+    the variable arrives set-but-empty rather than absent. That matters twice:
+    load_dotenv() does not override what is already set, so an empty
+    ROUTER_PASS would shadow a working .env; and os.getenv(name, default)
+    hands back the empty string instead of the default, so an empty
+    ROUTER_USER would be sent to the router in place of "admin".
+    """
+    for name in ROUTER_ENV_NAMES:
+        if not os.environ.get(name, "").strip():
+            os.environ.pop(name, None)
+
+
 def load_env() -> None:
     """Load a .env file into the environment, if one exists.
 
@@ -122,6 +147,7 @@ def load_env() -> None:
     knows whether ROUTER_PASS is even set — can do that without also
     requiring a password.
     """
+    _drop_blank_env()
     for path in config_paths():
         if path.is_file():
             load_dotenv(path, interpolate=False)
@@ -135,17 +161,17 @@ def load_config() -> RouterConfig:
     password = os.getenv("ROUTER_PASS")
     if not password:
         raise ConfigError(
-            "ROUTER_PASS is not set. Create a config file at one of:\n  "
+            "No router password saved yet. Run:\n\n  asuswrt setup\n\n"
+            "It asks for the router login and writes it out. Searched:\n  "
             + _searched_paths()
-            + "\n\nStart from env.example in the repository."
         )
 
     host = os.getenv("ROUTER_HOST") or detect_gateway()
     if not host:
         raise ConfigError(
-            "ROUTER_HOST is not set and the default gateway could not be "
-            "detected. Set ROUTER_HOST to the router's address in one of:\n  "
-            + _searched_paths()
+            "The router's address is not set and the default gateway could "
+            "not be detected. Run:\n\n  asuswrt setup --host ROUTER_ADDRESS\n\n"
+            "Searched:\n  " + _searched_paths()
         )
 
     port = os.getenv("ROUTER_PORT")

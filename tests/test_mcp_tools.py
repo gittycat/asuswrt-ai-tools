@@ -786,7 +786,7 @@ def test_config_error_message_has_the_searched_paths_not_the_password(server, mo
     assert result.is_error
     text = error_text(result)
     assert str(env) in text
-    assert "ROUTER_PASS is not set" in text
+    assert "asuswrt setup" in text
 
 
 def test_router_error_becomes_a_tool_error(server, patched, router, monkeypatch):

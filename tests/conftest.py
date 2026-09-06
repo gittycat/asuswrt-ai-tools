@@ -6,12 +6,33 @@ definition of FakeRouter no matter how pytest imports these modules.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from asusrouter import AsusData
 from asusrouter.modules.port_forwarding import AsusPortForwarding, PortForwardingRule
 
 from helpers import FakeRouter, default_data
+
+
+@pytest.fixture(autouse=True)
+def _isolate_router_env():
+    """Undo what load_dotenv() does to os.environ.
+
+    monkeypatch cannot restore it: load_dotenv writes the variables itself,
+    so a test that loads a .env leaks its values into every test that runs
+    after it.
+    """
+    from asuswrt.router import ROUTER_ENV_NAMES
+
+    saved = {name: os.environ.get(name) for name in ROUTER_ENV_NAMES}
+    yield
+    for name, value in saved.items():
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
 
 
 @pytest.fixture

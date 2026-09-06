@@ -72,6 +72,53 @@ flag.
 After changing the permission level, refresh the app's tool catalogue in
 ChatGPT.
 
+## What protects the download
+
+Three things, and it is worth knowing where each one stops.
+
+The release archive is published with a `.sha256` beside it, and
+scripts/install-connector.sh verifies it before unpacking anything. That
+catches a corrupted or truncated download and a network attacker who rewrites
+the archive in transit. It proves nothing about origin: the checksum lives in
+the same GitHub release as the archive, so anyone who can write to that release
+replaces both files at once.
+
+OpenAI's tunnel-client binary is pinned by hash in
+packaging/chatgpt_connector/build_release.py (`PINNED_SHA256`). The build
+cross-checks the upstream checksum file against that committed hash and fails
+if they disagree, so a change to the one component this project did not write
+cannot land without a human reviewing it. This is the control that matters most
+here.
+
+The archive is built deterministically — `deterministic_targz` zeroes mtimes,
+uids and gids — so a suspicious user can rebuild it and compare bytes.
+
+### Deliberately not done
+
+**Sigstore build-provenance attestation**
+(`actions/attest-build-provenance` in the release workflow). It would bind the
+archive's digest to the commit and workflow that produced it, which defends
+against someone uploading a hand-built archive to the release page. Anyone able
+to do that already holds the GitHub account, and can therefore push to main,
+produce a *valid* attestation for a malicious commit, and rewrite
+install-connector.sh as well — so it signs the front door while the attacker
+owns the house. Attestation earns its cost when a project is consumed by other
+software or by enterprises who must answer SLSA questionnaires. Neither applies
+to a single-maintainer developer tool whose users can read the source.
+
+**Notarization, and a signed .pkg or .dmg installer.** A DMG is the wrong
+container for this: it is the drag-an-.app-to-Applications format, and this
+ships a CLI plus a LaunchAgent. Unsigned it is worse than the tarball, because
+double-clicking quarantines everything inside and the user still has to open a
+terminal. A notarized .pkg is the correct native answer, and costs an Apple
+Developer Program membership plus a notarytool step in CI. Revisit only if this
+ever targets people who will not use a terminal.
+
+**Pinning the install-connector.sh URL to a release tag.** Every comparable
+bootstrap installer — rustup, nvm, Homebrew, uv — serves its script from the
+default branch over TLS and verifies nothing about the script itself. Pinning
+would leave a stale URL in the README after each release for no practical gain.
+
 ## Connect the app in ChatGPT
 
 While the connector is running:

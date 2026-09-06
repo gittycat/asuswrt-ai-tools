@@ -1,3 +1,6 @@
+# Build provenance attestation is deliberately absent here, along with
+# notarization and a signed installer. The reasoning is in
+# docs/chatgpt-connector.md, under "Deliberately not done".
 name: Build ChatGPT connector release
 
 on:

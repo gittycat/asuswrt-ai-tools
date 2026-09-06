@@ -67,8 +67,11 @@ say()    { printf '%s\n' "$*"; }
 hit()    { ITEMS[$N_ITEMS]="$1"; N_ITEMS=$((N_ITEMS+1)); LAST="$1"; }
 manual() { MANUAL[$N_MANUAL]="$1"; N_MANUAL=$((N_MANUAL+1)); }
 
-# ~ for $HOME, so the list stays narrow enough to scan.
-short() { printf '%s' "${1/#$HOME/\~}"; }
+# ~ for $HOME, so the list stays narrow enough to scan. The replacement comes
+# from a variable: bash 3.2, the bash still shipped with macOS, keeps the
+# backslash of a literal \~ and prints \~/Library instead of ~/Library.
+TILDE='~'
+short() { printf '%s' "${1/#$HOME/$TILDE}"; }
 
 # Mark an already-listed line as failed. Defaults to the line just added,
 # which is the common case; pass a label when the removal runs later.

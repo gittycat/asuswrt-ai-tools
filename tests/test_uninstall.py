@@ -52,8 +52,8 @@ def test_uninstall_ignores_non_mcp_asuswrt_metadata(tmp_path):
         },
     )
 
-    assert "claude mcp remove asuswrt" not in result.stdout
-    assert "Nothing found. This Mac is already clean." in result.stdout
+    assert "Nothing to remove." in result.stdout
+    assert "Remove by hand:" not in result.stdout
 
 
 @pytest.mark.parametrize(
@@ -67,26 +67,43 @@ def test_uninstall_ignores_non_mcp_asuswrt_metadata(tmp_path):
 def test_uninstall_detects_only_real_mcp_entries(tmp_path, state, project_mcp):
     result = run_uninstall(tmp_path, state, project_mcp=project_mcp)
 
-    assert "asuswrt MCP server is registered" in result.stdout
-    assert "1 items would be removed" in result.stdout
+    # claude is not on PATH here, so the entry is reported rather than removed.
+    assert "Remove by hand:" in result.stdout
+    assert (
+        "~/.claude.json  (asuswrt mcpServers entry — claude is not on PATH)"
+        in result.stdout
+    )
 
 
 @pytest.mark.parametrize(
-    ("args", "expected"),
-    [
-        (("--yes",), "only retained files, .claude/ or .env, may appear"),
-        (("--yes", "--repo-all"), "only retained files, .claude/ or .env, may appear"),
-        (("--yes", "--repo-all", "--password"), "should print nothing"),
-    ],
+    "args",
+    [("--yes",), ("--yes", "--repo-all"), ("--yes", "--repo-all", "--password")],
 )
-def test_uninstall_verification_accounts_for_retained_files(tmp_path, args, expected):
+def test_uninstall_removes_the_cli_shims(tmp_path, args):
+    bin_dir = tmp_path / "home" / ".local" / "bin"
+    bin_dir.mkdir(parents=True)
+    shims = ["asuswrt", "asuswrt-mcp", "asuswrt-probe", "asuswrt-chatgpt-connector"]
+    for name in shims:
+        (bin_dir / name).touch()
+
+    result = run_uninstall(tmp_path, {}, *args)
+
+    assert f"Removed {len(shims)} items:" in result.stdout
+    for name in shims:
+        assert f"  ~/.local/bin/{name}" in result.stdout
+        assert not (bin_dir / name).exists()
+
+
+def test_uninstall_abbreviates_home_as_a_bare_tilde(tmp_path):
+    # bash 3.2, the bash macOS ships, keeps the backslash of a literal \~.
     executable = tmp_path / "home" / ".local" / "bin" / "asuswrt"
     executable.parent.mkdir(parents=True)
     executable.touch()
 
-    result = run_uninstall(tmp_path, {}, *args)
+    result = run_uninstall(tmp_path, {})
 
-    assert expected in result.stdout
+    assert "  ~/.local/bin/asuswrt" in result.stdout
+    assert "\\~" not in result.stdout
 
 
 def test_uninstall_removes_chatgpt_connector_state(tmp_path):
@@ -105,7 +122,9 @@ def test_uninstall_removes_chatgpt_connector_state(tmp_path):
     (state_dir / "control-plane-api-key").write_text("secret")
 
     preview = run_uninstall(tmp_path, {})
-    assert "stop the asuswrt-chatgpt-connector LaunchAgent" in preview.stdout
+    assert "2 items would be removed:" in preview.stdout
+    assert f"  ~/Library/LaunchAgents/{label}.plist" in preview.stdout
+    assert "  ~/Library/Application Support/asuswrt-chatgpt-connector" in preview.stdout
     assert plist.exists()
     assert state_dir.exists()
 
@@ -121,8 +140,11 @@ def test_uninstall_reports_gemini_cli_registration(tmp_path):
 
     result = run_uninstall(tmp_path, {})
 
-    assert "asuswrt under mcpServers in ~/.gemini/settings.json" in result.stdout
-    assert "1 items would be removed" in result.stdout
+    assert "Remove by hand:" in result.stdout
+    assert (
+        "~/.gemini/settings.json  (asuswrt mcpServers entry — gemini is not on PATH)"
+        in result.stdout
+    )
 
 
 def test_uninstall_ignores_unrelated_gemini_servers(tmp_path):
@@ -132,7 +154,8 @@ def test_uninstall_ignores_unrelated_gemini_servers(tmp_path):
 
     result = run_uninstall(tmp_path, {})
 
-    assert "Nothing found. This Mac is already clean." in result.stdout
+    assert "Nothing to remove." in result.stdout
+    assert "Remove by hand:" not in result.stdout
 
 
 def test_uninstall_password_flag_covers_asuswrt_env_file(tmp_path):
@@ -142,8 +165,9 @@ def test_uninstall_password_flag_covers_asuswrt_env_file(tmp_path):
     env_extra = {"ASUSWRT_ENV_FILE": str(env_file)}
 
     kept = run_uninstall(tmp_path, {}, "--yes", env_extra=env_extra)
-    assert "kept (pass --password to delete it too)" in kept.stdout
+    assert "Nothing to remove." in kept.stdout
     assert env_file.exists()
 
-    run_uninstall(tmp_path, {}, "--yes", "--password", env_extra=env_extra)
+    dropped = run_uninstall(tmp_path, {}, "--yes", "--password", env_extra=env_extra)
+    assert str(env_file) in dropped.stdout
     assert not env_file.exists()

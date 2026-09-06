@@ -1,6 +1,6 @@
 [project]
 name = "asuswrt"
-version = "0.8.0"
+version = "0.8.1"
 description = "CLI and MCP server to query and modify an ASUS (AsusWRT) router over its HTTP API"
 readme = "README.md"
 authors = [

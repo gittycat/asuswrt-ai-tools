@@ -1,7 +1,7 @@
 {
   "name": "asuswrt",
   "displayName": "ASUS Router Control",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Inspect and control an ASUS (AsusWRT) router from Claude Code — clients, WAN, firewall state, port forwarding, guest WiFi, WiFi security. Needs uv on PATH; it fetches Python and the dependencies on first run. It asks for the router's admin password when you install it.",
   "author": {
     "name": "Main Admin",

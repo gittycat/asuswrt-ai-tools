@@ -3,7 +3,7 @@
   "manifest_version": "0.4",
   "name": "asuswrt",
   "display_name": "ASUS Router Control",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Inspect and control an ASUS (AsusWRT) home router: connected devices, WAN, firewall, port forwarding, guest WiFi and WiFi security.",
   "long_description": "Talks to the router's HTTP API — the same one the official ASUS mobile app uses. No SSH and no web-UI scraping.\n\nThe bundle carries the server. Claude Desktop uses uv to fetch Python 3.13 and the dependencies on first launch, so the only thing to install beforehand is uv itself. Claude Desktop asks for the router's admin password when you install the extension and keeps it in this machine's secure storage; it is read on this machine only and is never sent to a model.\n\nThe extension is read-only until you turn on \"Allow changes to the router\". Even then, every change is returned as a preview first and applied only on a second, confirmed call.\n\nTwo router settings this extension will not suggest turning on: AiProtection (and Traffic Analyzer, Adaptive QoS, Web History), because they are all gated behind one Trend Micro EULA that sends browsing data off the router; and DoS protection, because it only rate-limits traffic to roughly one packet per second, which breaks legitimate connections without stopping a real flood. Both reading as off is the expected state, not a problem to fix.",
   "author": {

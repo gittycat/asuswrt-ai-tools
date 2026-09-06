@@ -6,12 +6,15 @@
 # virtualenv and install record. Safe to run when only some of them are
 # present. Tool-owned workspace history is left alone.
 #
+# Everything that goes is printed as one sorted list, nothing else.
+#
 # Not touched: ~/.cache/uv. Since v0.8.0 the plugin and the extension resolve
 # their dependencies through uv, which caches wheels there — shared with every
 # other uv project on the machine, so removing it is never this script's call.
 #
-# Run from inside a clone and it also returns the working tree to the state
-# git clone leaves it in, so the next install starts from nothing.
+# Run from inside a clone and it also clears the build artifacts, caches and
+# .venv out of the working tree. Files you added since the clone — notes,
+# scratch files, anything git does not ignore — are left where they are.
 #
 # The router login stays put unless --password is passed. Since v0.8.0 that
 # login is written by `asuswrt setup` (and by the ChatGPT connector installer)
@@ -24,17 +27,25 @@
 #   ./scripts/uninstall.sh --yes               # do it, keep the login and .claude/
 #   ./scripts/uninstall.sh --yes --password    # also delete the saved router login
 #   ./scripts/uninstall.sh --yes --repo-all    # also delete the clone's .claude/
+#   ./scripts/uninstall.sh --yes --quiet       # say nothing unless something failed
+#
+# Exits 1 when something it found could not be removed, so a test suite can
+# tear down with `--yes --quiet` and let a dirty machine fail the run. Point
+# HOME at a temporary directory to keep such a sweep off your own install:
+# every path here hangs off $HOME.
 #
 set -uo pipefail
 
 APPLY=0
 DROP_PASSWORD=0
 DROP_CLAUDE_DIR=0
+QUIET=0
 for arg in "$@"; do
   case "$arg" in
     -y|--yes)      APPLY=1 ;;
     --password)    DROP_PASSWORD=1 ;;
     --repo-all)    DROP_CLAUDE_DIR=1 ;;
+    -q|--quiet)    QUIET=1 ;;
     # The whole comment header, however long it grows: every line from the
     # shebang to the first line that is not a comment.
     -h|--help)     sed -n '2,${/^[^#]/q;p;}' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -42,75 +53,103 @@ for arg in "$@"; do
   esac
 done
 
-FOUND=0
-DONE=0
+# Nothing prints while the sweep runs. Every removal is collected here and the
+# whole set is sorted and printed once at the end, so the output is a list of
+# what goes rather than a running commentary.
+ITEMS=()      # one line each, the thing that is removed
+MANUAL=()     # found, but only a human can remove it
+N_ITEMS=0
+N_MANUAL=0
+N_FAIL=0
+LAST=""
 
-say()  { printf '%s\n' "$*"; }
-hit()  { FOUND=$((FOUND+1)); printf '  %s\n' "$*"; }
-ran()  { DONE=$((DONE+1)); }
+say()    { printf '%s\n' "$*"; }
+hit()    { ITEMS[$N_ITEMS]="$1"; N_ITEMS=$((N_ITEMS+1)); LAST="$1"; }
+manual() { MANUAL[$N_MANUAL]="$1"; N_MANUAL=$((N_MANUAL+1)); }
 
-# Run a command only when applying; otherwise just report it.
+# ~ for $HOME, so the list stays narrow enough to scan.
+short() { printf '%s' "${1/#$HOME/\~}"; }
+
+# Mark an already-listed line as failed. Defaults to the line just added,
+# which is the common case; pass a label when the removal runs later.
+fail() {
+  local want="${1:-$LAST}" i=0
+  while [ "$i" -lt "$N_ITEMS" ]; do
+    [ "${ITEMS[$i]}" = "$want" ] && ITEMS[$i]="$want   ! failed"
+    i=$((i+1))
+  done
+  N_FAIL=$((N_FAIL+1))
+}
+
+# Run a command only when applying.
 do_cmd() {
-  if [ "$APPLY" -eq 1 ]; then
-    if "$@" >/dev/null 2>&1; then ran; else say "      ! failed: $*"; fi
-  fi
+  [ "$APPLY" -eq 1 ] || return 0
+  "$@" >/dev/null 2>&1 || fail
 }
 
 # Delete a path only when applying.
 do_rm() {
-  if [ "$APPLY" -eq 1 ]; then
-    if rm -rf "$1" 2>/dev/null; then ran; else say "      ! could not remove $1"; fi
-  fi
+  [ "$APPLY" -eq 1 ] || return 0
+  rm -rf "$1" 2>/dev/null || fail "${2:-$LAST}"
 }
 
-say "asuswrt cleanup"
-[ "$APPLY" -eq 1 ] || say "(dry run — pass --yes to actually remove)"
-say ""
-
 # ------------------------------------------------------ ChatGPT connector ---
-say "ChatGPT connector"
 CONNECTOR_LABEL="io.github.gittycat.asuswrt-chatgpt-connector"
 CONNECTOR_PLIST="$HOME/Library/LaunchAgents/$CONNECTOR_LABEL.plist"
 CONNECTOR_STATE="$HOME/Library/Application Support/asuswrt-chatgpt-connector"
-if [ -e "$CONNECTOR_PLIST" ] || [ -d "$CONNECTOR_STATE" ]; then
-  hit "stop the asuswrt-chatgpt-connector LaunchAgent"
-  if [ "$APPLY" -eq 1 ]; then
-    launchctl bootout "gui/$UID/$CONNECTOR_LABEL" >/dev/null 2>&1 || true
-    ran
-  fi
+# Stopping the agent is part of removing its plist, not a thing of its own.
+if [ "$APPLY" -eq 1 ] && { [ -e "$CONNECTOR_PLIST" ] || [ -d "$CONNECTOR_STATE" ]; }; then
+  launchctl bootout "gui/$UID/$CONNECTOR_LABEL" >/dev/null 2>&1 || true
 fi
 if [ -e "$CONNECTOR_PLIST" ]; then
-  hit "rm ~/Library/LaunchAgents/$CONNECTOR_LABEL.plist"
+  hit "$(short "$CONNECTOR_PLIST")"
   do_rm "$CONNECTOR_PLIST"
 fi
 if [ -d "$CONNECTOR_STATE" ]; then
-  hit "rm -rf ~/Library/Application Support/asuswrt-chatgpt-connector"
+  hit "$(short "$CONNECTOR_STATE")"
   do_rm "$CONNECTOR_STATE"
 fi
-say "  Remote OpenAI tunnel and ChatGPT app are left in place"
-say ""
 
 # ---------------------------------------------------------------- the CLI ---
-say "CLI and MCP binaries"
-if command -v uv >/dev/null 2>&1 && uv tool list 2>/dev/null | grep -q '^asuswrt'; then
-  hit "uv tool uninstall asuswrt"
-  do_cmd uv tool uninstall asuswrt
-fi
-# uv normally takes these with it; catch a half-removed install too.
+# Everything is found before anything is removed, so a dry run and a real run
+# list exactly the same paths — `uv tool uninstall` takes most of them with it.
+CLI_PATHS=()
+CLI_N=0
 for f in asuswrt asuswrt-mcp asuswrt-probe asuswrt-chatgpt-connector; do
   if [ -e "$HOME/.local/bin/$f" ] || [ -L "$HOME/.local/bin/$f" ]; then
-    hit "rm ~/.local/bin/$f"
-    do_rm "$HOME/.local/bin/$f"
+    CLI_PATHS[$CLI_N]="$HOME/.local/bin/$f"
+    CLI_N=$((CLI_N+1))
   fi
 done
 if [ -d "$HOME/.local/share/uv/tools/asuswrt" ]; then
-  hit "rm -rf ~/.local/share/uv/tools/asuswrt"
-  do_rm "$HOME/.local/share/uv/tools/asuswrt"
+  CLI_PATHS[$CLI_N]="$HOME/.local/share/uv/tools/asuswrt"
+  CLI_N=$((CLI_N+1))
+fi
+UV_TOOL=0
+if command -v uv >/dev/null 2>&1 && uv tool list 2>/dev/null | grep -q '^asuswrt'; then
+  UV_TOOL=1
+fi
+if [ "$UV_TOOL" -eq 1 ] || [ "$CLI_N" -gt 0 ]; then
+  i=0
+  while [ "$i" -lt "$CLI_N" ]; do
+    hit "$(short "${CLI_PATHS[$i]}")"
+    i=$((i+1))
+  done
+  [ "$CLI_N" -gt 0 ] || hit "asuswrt  (uv tool)"
+  if [ "$APPLY" -eq 1 ]; then
+    [ "$UV_TOOL" -eq 1 ] && uv tool uninstall asuswrt >/dev/null 2>&1
+    i=0
+    while [ "$i" -lt "$CLI_N" ]; do
+      p="${CLI_PATHS[$i]}"
+      if [ -e "$p" ] || [ -L "$p" ]; then
+        rm -rf "$p" 2>/dev/null || fail "$(short "$p")"
+      fi
+      i=$((i+1))
+    done
+  fi
 fi
 
 # ------------------------------------------------------------- Claude Code ---
-say ""
-say "Claude Code"
 # `claude mcp remove` only clears one scope at a time, so try all three: the
 # server can be registered in ~/.claude.json (user), per project, or locally.
 # Match only an actual mcpServers key. Claude also records unrelated history
@@ -146,35 +185,31 @@ PY
 
 if claude_mcp_registered; then
   if command -v claude >/dev/null 2>&1; then
-    hit "claude mcp remove asuswrt  (local, project and user scopes)"
+    hit "$(short "$HOME/.claude.json")  (asuswrt MCP server, every scope)"
     if [ "$APPLY" -eq 1 ]; then
       for scope in local project user; do
         claude mcp remove asuswrt --scope "$scope" >/dev/null 2>&1
       done
-      if claude_mcp_registered; then
-        say "      ! asuswrt MCP server is still registered — remove the mcpServers entry by hand"
-      else
-        ran
-      fi
+      claude_mcp_registered && fail
     fi
   else
-    hit "asuswrt MCP server is registered — claude is not on PATH, remove the mcpServers entry by hand"
+    manual "$(short "$HOME/.claude.json")  (asuswrt mcpServers entry — claude is not on PATH)"
   fi
 fi
 if command -v claude >/dev/null 2>&1; then
   if claude plugin list 2>/dev/null | grep -q asuswrt; then
-    hit "claude plugin uninstall asuswrt@asuswrt"
+    hit "asuswrt Claude Code plugin"
     do_cmd claude plugin uninstall asuswrt@asuswrt
   fi
   if claude plugin marketplace list 2>/dev/null | grep -q asuswrt; then
-    hit "claude plugin marketplace remove asuswrt"
+    hit "asuswrt Claude Code plugin marketplace"
     do_cmd claude plugin marketplace remove asuswrt
   fi
 fi
 # The skill folder and its symlink; the skill no longer exists as of v0.8.0.
 for p in "$HOME/.claude/skills/asuswrt" "$HOME/.agents/skills/asuswrt"; do
   if [ -e "$p" ] || [ -L "$p" ]; then
-    hit "rm -rf ${p/#$HOME/\~}"
+    hit "$(short "$p")"
     do_rm "$p"
   fi
 done
@@ -191,9 +226,8 @@ except Exception: sys.exit(1)
 cfg=d.get('pluginConfigs') or {}
 sys.exit(0 if any('asuswrt' in k.lower() for k in cfg) else 1)
 " 2>/dev/null; then
-    hit "remove the asuswrt entry from ~/.claude/settings.json pluginConfigs"
-    if [ "$APPLY" -eq 1 ]; then
-      if python3 -c "
+    hit "$(short "$SETTINGS")  (asuswrt pluginConfigs entry)"
+    do_cmd python3 -c "
 import json
 p='$SETTINGS'
 d=json.load(open(p))
@@ -201,33 +235,25 @@ cfg=d.get('pluginConfigs') or {}
 for k in [k for k in cfg if 'asuswrt' in k.lower()]:
     del cfg[k]
 json.dump(d, open(p,'w'), indent=2)
-" 2>/dev/null; then ran; else say "      ! could not edit $SETTINGS"; fi
-    fi
+"
   fi
 fi
 
 # ------------------------------------------------------------------ Codex ---
-say ""
-say "Codex"
-if grep -q '^\[mcp_servers\.asuswrt\]' "$HOME/.codex/config.toml" 2>/dev/null; then
+CODEX_CONFIG="$HOME/.codex/config.toml"
+if grep -q '^\[mcp_servers\.asuswrt\]' "$CODEX_CONFIG" 2>/dev/null; then
   if command -v codex >/dev/null 2>&1; then
-    hit "codex mcp remove asuswrt"
+    hit "$(short "$CODEX_CONFIG")  ([mcp_servers.asuswrt] block)"
     if [ "$APPLY" -eq 1 ]; then
       codex mcp remove asuswrt >/dev/null 2>&1
-      if grep -q '^\[mcp_servers\.asuswrt\]' "$HOME/.codex/config.toml" 2>/dev/null; then
-        say "      ! still in ~/.codex/config.toml — delete the [mcp_servers.asuswrt] block by hand"
-      else
-        ran
-      fi
+      grep -q '^\[mcp_servers\.asuswrt\]' "$CODEX_CONFIG" 2>/dev/null && fail
     fi
   else
-    hit "[mcp_servers.asuswrt] in ~/.codex/config.toml — codex is not on PATH, delete the block by hand"
+    manual "$(short "$CODEX_CONFIG")  ([mcp_servers.asuswrt] block — codex is not on PATH)"
   fi
 fi
 
 # ------------------------------------------------------------ Gemini CLI ---
-say ""
-say "Gemini CLI"
 # `gemini mcp add --scope user` writes into ~/.gemini/settings.json; a project
 # scope writes .gemini/settings.json beside the checkout. Only a real
 # mcpServers entry counts, so parse the file rather than grep for the name.
@@ -258,25 +284,19 @@ GPY
 
 if gemini_mcp_registered; then
   if command -v gemini >/dev/null 2>&1; then
-    hit "gemini mcp remove asuswrt  (user and project scopes)"
+    hit "$(short "$GEMINI_USER")  (asuswrt mcpServers entry, user and project)"
     if [ "$APPLY" -eq 1 ]; then
       for scope in user project; do
         gemini mcp remove asuswrt --scope "$scope" >/dev/null 2>&1
       done
-      if gemini_mcp_registered; then
-        say "      ! still registered — delete the asuswrt mcpServers entry from ~/.gemini/settings.json or .gemini/settings.json"
-      else
-        ran
-      fi
+      gemini_mcp_registered && fail
     fi
   else
-    hit "asuswrt under mcpServers in ~/.gemini/settings.json or .gemini/settings.json — gemini is not on PATH, remove that entry by hand"
+    manual "$(short "$GEMINI_USER")  (asuswrt mcpServers entry — gemini is not on PATH)"
   fi
 fi
 
 # --------------------------------------------------------- Claude Desktop ---
-say ""
-say "Claude Desktop"
 DESKTOP="$HOME/Library/Application Support/Claude"
 # Only a real mcpServers entry counts. A bare grep for the name matches this
 # repo's own path in unrelated preference keys and cries wolf.
@@ -287,7 +307,7 @@ try: d=json.load(open('$DESKTOP/claude_desktop_config.json'))
 except Exception: sys.exit(1)
 sys.exit(0 if 'asuswrt' in (d.get('mcpServers') or {}) else 1)
 " 2>/dev/null; then
-    hit "\"asuswrt\" under mcpServers in claude_desktop_config.json — remove that entry by hand"
+    manual "$(short "$DESKTOP/claude_desktop_config.json")  (asuswrt mcpServers entry)"
   fi
 fi
 # The extension is two paths named for its id (local.mcpb.<author>.<name>): the
@@ -295,7 +315,7 @@ fi
 # launch, and a one-line enabled/disabled file beside it.
 while IFS= read -r p; do
   [ -n "$p" ] || continue
-  hit "rm -rf $p"
+  hit "$(short "$p")"
   do_rm "$p"
 done < <(find "$DESKTOP/Claude Extensions" "$DESKTOP/Claude Extensions Settings" \
            -maxdepth 1 -iname '*asuswrt*' 2>/dev/null)
@@ -304,9 +324,8 @@ done < <(find "$DESKTOP/Claude Extensions" "$DESKTOP/Claude Extensions Settings"
 INSTALLS="$DESKTOP/extensions-installations.json"
 if [ -f "$INSTALLS" ] && grep -q 'asuswrt' "$INSTALLS" 2>/dev/null; then
   if command -v python3 >/dev/null 2>&1; then
-    hit "remove the asuswrt entry from extensions-installations.json"
-    if [ "$APPLY" -eq 1 ]; then
-      if python3 -c "
+    hit "$(short "$INSTALLS")  (asuswrt entry)"
+    do_cmd python3 -c "
 import json
 p='$INSTALLS'
 d=json.load(open(p))
@@ -314,10 +333,9 @@ ext=d.get('extensions') or {}
 for k in [k for k in ext if 'asuswrt' in k.lower()]:
     del ext[k]
 json.dump(d, open(p,'w'), indent=2)
-" 2>/dev/null; then ran; else say "      ! could not edit $INSTALLS"; fi
-    fi
+"
   else
-    hit "asuswrt in extensions-installations.json — python3 missing, drop the entry by hand"
+    manual "$(short "$INSTALLS")  (asuswrt entry — python3 missing)"
   fi
 fi
 # A downloaded bundle, if one is still sitting where the README's curl left it.
@@ -325,13 +343,11 @@ fi
 # so the file from any release — including the legacy one — is caught.
 while IFS= read -r p; do
   [ -n "$p" ] || continue
-  hit "rm ${p/#$HOME/\~}"
+  hit "$(short "$p")"
   do_rm "$p"
 done < <(find "$HOME" "$HOME/Downloads" -maxdepth 1 -name 'asuswrt*.mcpb' 2>/dev/null)
 
 # ------------------------------------------------------------ credentials ---
-say ""
-say "Saved router login"
 # `asuswrt setup` and the ChatGPT connector installer write ~/.config/asuswrt/.env
 # with mode 0600. $ASUSWRT_ENV_FILE moves that file elsewhere, so remove what it
 # points at too — but only when it is somewhere the directory sweep will miss.
@@ -343,81 +359,98 @@ esac
 for p in "${CRED_PATHS[@]}"; do
   [ -e "$p" ] || continue
   if [ "$DROP_PASSWORD" -eq 1 ]; then
-    hit "rm -rf ${p/#$HOME/\~}"
+    hit "$(short "$p")"
     do_rm "$p"
-  else
-    say "  ${p/#$HOME/\~} kept (pass --password to delete it too)"
   fi
 done
-# A password typed into the Claude Code plugin dialog or the Claude Desktop
-# extension lives in that app's secure storage, not in a file this script owns.
-# Removing the plugin or extension takes it with it; say so rather than leave
-# someone believing --password reached every copy.
-say "  passwords saved in the Claude Code plugin or Claude Desktop extension go"
-say "  with the plugin or extension itself — the sections above remove those"
 
 # ------------------------------------------------------------- repo state ---
 # Only touches the working directory when it really is a clone of this repo,
 # so running this from anywhere else can never delete the wrong thing.
-say ""
-say "Repository working tree"
 REPO="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-if [ -z "$REPO" ]; then
-  say "  (not inside a git repository — skipped)"
-elif [ ! -d "$REPO/src/asuswrt" ] || ! grep -q '^name = "asuswrt"' "$REPO/pyproject.toml" 2>/dev/null; then
-  say "  (not a clone of this repo — skipped)"
+if [ -z "$REPO" ] || [ ! -d "$REPO/src/asuswrt" ] ||
+   ! grep -q '^name = "asuswrt"' "$REPO/pyproject.toml" 2>/dev/null; then
+  : # not a clone of this repo — nothing to say about a working tree
 elif [ -n "$(git -C "$REPO" status --porcelain --untracked-files=no)" ]; then
-  say "  ! uncommitted changes to tracked files — skipping, commit or stash first:"
-  git -C "$REPO" status --short --untracked-files=no | sed 's/^/      /'
+  : # uncommitted changes to tracked files — leave the working tree alone
 else
-  # -e .claude keeps your local Claude Code settings (sandbox exclusions and
-  # the like), which a fresh clone would not have anyway. --repo-all drops it.
-  CLEAN_ARGS=(-xd)
-  [ "$DROP_CLAUDE_DIR" -eq 1 ] || CLEAN_ARGS+=(-e .claude)
-  # A clone can hold its own .env, which is read before ~/.config/asuswrt/.env.
-  # It is a credential file, so --password governs it, not a plain --yes.
-  [ "$DROP_PASSWORD" -eq 1 ] || CLEAN_ARGS+=(-e .env -e ".env.*")
-  # Never let git clean delete the script while bash is still reading it.
-  # Once this file is committed git clean skips it anyway; this covers the
-  # case where it was dropped into the tree untracked.
+  # -X, not -x: only files git ignores go — .venv/, __pycache__/, the tooling
+  # caches, build/, dist/, *.egg-info. Anything else you dropped into the tree
+  # is not this script's to delete.
+  #
+  # git clean only lists them here; the deletion is done below, one path at a
+  # time. Under -X a `-e` pattern makes a path *more* ignored, so it marks a
+  # target rather than a keeper — the reverse of what it does under -x, and no
+  # way to spare the .env this tree may hold.
+  #
+  # Never let git clean delete this script while bash is still reading it.
+  # Once committed it is tracked and -X skips it anyway; this covers the case
+  # where it was dropped into the tree untracked and ignored.
   SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+  SELF_REL=""
   case "$SELF" in
-    "$REPO"/*)
-      SELF_REL="${SELF#$REPO/}"
-      git -C "$REPO" ls-files --error-unmatch "$SELF_REL" >/dev/null 2>&1 || CLEAN_ARGS+=(-e "$SELF_REL")
-      ;;
+    "$REPO"/*) SELF_REL="${SELF#$REPO/}" ;;
   esac
-  REPO_ITEMS=0
   while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    REPO_ITEMS=$((REPO_ITEMS+1))
-    hit "${line/Would remove /rm -rf }"
-  done < <(git -C "$REPO" clean "${CLEAN_ARGS[@]}" -n)
-  if [ "$APPLY" -eq 1 ] && [ "$REPO_ITEMS" -gt 0 ]; then
-    if git -C "$REPO" clean "${CLEAN_ARGS[@]}" -f >/dev/null 2>&1; then
-      DONE=$((DONE+REPO_ITEMS))
-    else
-      say "      ! git clean failed"
+    p="${line#Would remove }"
+    [ -n "$p" ] || continue
+    case "$p" in
+      # A clone can hold its own .env, which is read before
+      # ~/.config/asuswrt/.env. It is a credential file, so --password governs
+      # it, not a plain --yes.
+      .env|.env.*) [ "$DROP_PASSWORD" -eq 1 ] || continue ;;
+      "$SELF_REL")  continue ;;
+    esac
+    hit "$p"
+    do_rm "$REPO/$p"
+  done < <(git -C "$REPO" clean -Xdn)
+  # .claude/ is untracked and unignored, so -X never reaches it. It holds your
+  # local Claude Code settings, which a fresh clone would not have anyway;
+  # only --repo-all asks for it.
+  if [ -d "$REPO/.claude" ]; then
+    if [ "$DROP_CLAUDE_DIR" -eq 1 ]; then
+      hit ".claude/"
+      do_rm "$REPO/.claude"
     fi
-  fi
-  [ "$DROP_CLAUDE_DIR" -eq 1 ] || say "  .claude/ kept (pass --repo-all to delete it too)"
-  if [ "$DROP_PASSWORD" -eq 0 ] && ls "$REPO"/.env* >/dev/null 2>&1; then
-    say "  .env kept (pass --password to delete it too)"
   fi
 fi
 
 # ----------------------------------------------------------------- report ---
-say ""
-if [ "$FOUND" -eq 0 ]; then
-  say "Nothing found. This Mac is already clean."
-elif [ "$APPLY" -eq 1 ]; then
-  say "Removed $DONE of $FOUND items."
-  say "Verify: command -v asuswrt        (should print nothing)"
-  if [ "$DROP_CLAUDE_DIR" -eq 1 ] && [ "$DROP_PASSWORD" -eq 1 ]; then
-    say "        git status --ignored -s   (should print nothing)"
+# --quiet says nothing when the sweep went as planned. What did not go as
+# planned still speaks up, on stderr: a teardown that fails in silence leaves a
+# dirty machine behind and the next run pays for it.
+if [ "$QUIET" -eq 0 ]; then
+  [ "$APPLY" -eq 1 ] || say "Dry run (pass --yes to actually remove)"
+
+  if [ "$N_ITEMS" -eq 0 ]; then
+    say "Nothing to remove."
   else
-    say "        git status --ignored -s   (only retained files, .claude/ or .env, may appear)"
+    if [ "$APPLY" -eq 1 ]; then
+      if [ "$N_FAIL" -gt 0 ]; then
+        say "Removed $((N_ITEMS-N_FAIL)) of $N_ITEMS items:"
+      else
+        say "Removed $N_ITEMS items:"
+      fi
+    else
+      say "$N_ITEMS items would be removed:"
+    fi
+    say ""
+    printf '%s\n' "${ITEMS[@]}" | sort | sed 's/^/  /'
+  fi
+
+  if [ "$N_MANUAL" -gt 0 ]; then
+    say ""
+    say "Remove by hand:"
+    printf '%s\n' "${MANUAL[@]}" | sort | sed 's/^/  /'
   fi
 else
-  say "$FOUND items would be removed. Re-run with --yes."
+  [ "$N_FAIL" -eq 0 ] || printf '%s\n' "${ITEMS[@]}" | grep '! failed' | sort >&2
+  [ "$N_MANUAL" -eq 0 ] || printf 'remove by hand: %s\n' "${MANUAL[@]}" | sort >&2
 fi
+
+# Non-zero when something that was found could not be removed. Anything left
+# for a human is reported but does not fail the run — nothing here can act on
+# it, so a caller cannot fix it by retrying.
+[ "$N_FAIL" -eq 0 ] || exit 1
+exit 0
+

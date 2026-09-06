@@ -26,7 +26,7 @@ answer the three questions against *that* host and implement it.
 
 ## Writes enabled by default
 
-Today the MCP server registers its 12 read tools always, its 8 write tools
+Today the MCP server registers its 15 read tools always, its 11 write tools
 only under `ASUSWRT_MCP_ALLOW_WRITES=1`, and `reboot_router` /
 `upgrade_firmware` only when `ASUSWRT_MCP_ALLOW_DANGEROUS=1` is also set. The
 default install can look at the router and cannot change it.

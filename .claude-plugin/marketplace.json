@@ -9,7 +9,7 @@
     {
       "name": "asuswrt",
       "source": "./",
-      "description": "Inspect and control an ASUS (AsusWRT) router — clients, WAN, firewall state, port forwarding, guest WiFi. MCP server; needs the asuswrt program installed separately.",
+      "description": "Inspect and control an ASUS (AsusWRT) router — clients, WAN, firewall state, port forwarding, guest WiFi. MCP server; the plugin carries it and runs it with uv, so only uv is needed.",
       "category": "infrastructure",
       "keywords": ["asus", "asuswrt", "router", "network", "port-forwarding", "mcp"]
     }

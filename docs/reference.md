@@ -11,7 +11,8 @@ stores the password, config precedence, custom addresses, HTTPS, and ports.
 
 ## What `uv tool install` puts where
 
-`asuswrt`, `asuswrt-mcp` and `asuswrt-probe` land in `~/.local/bin`. Run
+`asuswrt`, `asuswrt-mcp`, `asuswrt-probe` and `asuswrt-chatgpt-connector` land
+in `~/.local/bin`. Run
 `uv tool update-shell` once if that directory is not on your `PATH`. GUI apps
 never inherit your shell `PATH`, which is why a hand-written Claude Desktop
 config has to use an absolute path.
@@ -74,6 +75,76 @@ are repeated in the `get_overview`, `get_firewall_and_filters` and `get_nvram`
 descriptions, because an agent that reads `fw_dos_x=0` with no other context
 reports it as a gap to close. A test pins the wording in all three. The
 reasoning and sources are in [settings.md](settings.md).
+
+## Using the terminal
+
+The `asuswrt` command is the same code the MCP server calls, with the same
+read-only default and the same preview-then-confirm rule for writes.
+
+The tree is **noun then verb**. A bare noun reads it, so `asuswrt wan` and
+`asuswrt wan show` are the same command:
+
+```
+setup                 save the router login to ~/.config/asuswrt/.env
+show                  every reading in one connection (--firmware to also ask ASUS)
+system                model, firmware, MAC, AiMesh   (+ health: uptime, CPU, RAM, WAN)
+wan                   internet connection detail
+clients               connected and known devices    (--online)
+dns                   WAN resolvers and what LAN clients are told
+                      (+ set --server1 IP [--server2 IP], auto)
+upnp                  automatic inbound port opening (+ enable, disable)
+led                   router status lights           (+ on, off)
+firewall              firewall, filters and parental control state
+parental              parental control               (+ enable, disable)
+portforward           port forwarding                (+ add, remove, enable, disable)
+guest                 guest wireless networks        (+ enable, disable --band --id)
+wifi                  radio, WPA mode, MFP, country code, WPS
+                      (+ wps enable|disable, set-security, set-country)
+firmware              installed version and what ASUS is offering (+ upgrade)
+nvram get NAME …      read raw nvram variables (read-only)
+reboot                reboot the router
+```
+
+`asuswrt COMMAND --help` prints the flags for any of them. Older names still
+work but are hidden from `--help`: `info`, `status`, `pf`, `list`,
+`firmware info`, `wifi security`, `wifi country`. A name an agent has already
+learned is never removed.
+
+### JSON output
+
+`--json` goes before the command and turns every reading into machine-readable
+output:
+
+```bash
+asuswrt --json clients --online
+asuswrt --json system health
+```
+
+### Making changes
+
+Every write is a dry run until you pass `--yes` (`-y`). Without it you get the
+preview and an interactive confirmation prompt; with no terminal to ask at, the
+command prints the preview and exits **3** instead of guessing.
+
+```bash
+asuswrt portforward add --name plex --port 32400 --to-ip 192.168.1.42   # preview
+asuswrt portforward add --name plex --port 32400 --to-ip 192.168.1.42 --yes
+asuswrt guest enable --band 5ghz --id 1 --yes
+asuswrt wifi wps disable --yes
+```
+
+`firmware upgrade` additionally wants `--to VERSION` — the exact version string
+from `asuswrt firmware` — when run with `--yes`, so nothing flashes whatever
+happened to be offered.
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | success |
+| 1 | the router or the network failed the request |
+| 2 | no usable credentials — run `asuswrt setup` |
+| 3 | a write needs confirmation and there is no terminal to ask at |
 
 ## The MCP server
 

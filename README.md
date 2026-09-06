@@ -1,4 +1,4 @@
-# ASUS Router MPC Server for AI agents
+# ASUS Router MCP Server for AI agents
 
 This project installs a small python program that allows your AI agents to query and modify some of the settings on your Asus WRT router. The program essentially controls what the AI is allowed to do, which is safer than relying on prompt guardrails only.
 
@@ -15,8 +15,7 @@ It works directly with the following AI agents:
 ## Installation
 
 **Requirements:**
-- [uv](https://docs.astral.sh/uv/)
-- Python 3
+- [uv](https://docs.astral.sh/uv/) — it fetches Python 3.13 itself
 
 Your router password is collected locally, stored in secure
 storage or a private config file (~/.config/asuswrt/.env), and never sent to a model.
@@ -62,8 +61,8 @@ It detects the router address from the default gateway.
 
 **ChatGPT**
 
-An extra connector program needs to be installed first for ChatGPT.
-[latest release](https://github.com/gittycat/asuswrt-ai-tools/releases),
+An extra connector program needs to be installed first for ChatGPT. Download it
+from the [latest release](https://github.com/gittycat/asuswrt-ai-tools/releases),
 then follow the [ChatGPT connector guide](docs/chatgpt-connector.md). Its
 installer asks for the router password without echoing it.
 
@@ -105,6 +104,18 @@ Turn off WPS.
 
 Every change to the router settings is previewed and needs your confirmation.
 
+## Two settings this project will not turn on
+
+**AiProtection** — and with it Traffic Analyzer, Adaptive QoS and Web History.
+They are all gated behind one Trend Micro EULA that sends browsing data off the
+router.
+
+**DoS protection** — it only rate-limits traffic to roughly one packet per
+second, which breaks legitimate connections without stopping a real flood.
+
+Both reading as off is the expected state, not a gap to close. The reasoning
+and the sources are in [settings.md](docs/settings.md).
+
 ## Terminal
 
 Install the command and try it directly:
@@ -119,6 +130,9 @@ asuswrt clients --online
 
 See the [terminal reference](docs/reference.md#using-the-terminal) for all
 commands, JSON output, and making changes.
+
+To remove everything again, run `./scripts/uninstall.sh` from a clone — see
+[Removing it again](docs/reference.md#removing-it-again).
 
 ## Compatibility
 

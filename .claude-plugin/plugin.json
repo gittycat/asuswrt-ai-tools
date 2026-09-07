@@ -2,7 +2,7 @@
   "name": "asuswrt",
   "displayName": "ASUS Router Control",
   "version": "0.8.2",
-  "description": "Inspect and control an ASUS (AsusWRT) router from Claude Code — clients, WAN, firewall state, port forwarding, guest WiFi, WiFi security. Needs uv on PATH; it fetches Python and the dependencies on first run. It asks for the router's admin password when you install it.",
+  "description": "See what's on your home network and manage your ASUS (AsusWRT) router: devices, WiFi security, firewall, port forwarding. Needs uv on PATH. Read-only unless you allow changes.",
   "author": {
     "name": "Main Admin",
     "email": "accounts@kiluna.com"

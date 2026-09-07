@@ -1,5 +1,8 @@
 # ASUS Router MCP Server for AI agents
 
+![macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
+
 This project installs a small python program that allows your AI agents to query and modify some of the settings on your Asus WRT router. The program essentially controls what the AI is allowed to do, which is safer than relying on prompt guardrails only.
 
 Once installed, you can ask questions like "What devices are on my network", "Review the security settings" or "relay incoming port 8808 to my laptop at port 88".
@@ -162,6 +165,8 @@ To remove everything again, run `./scripts/uninstall.sh` from a clone — see
 [Removing it again](docs/reference.md#removing-it-again).
 
 ## Compatibility
+
+macOS only — tested on macOS 27. Linux and Windows are untested and unsupported.
 
 Tested on an ASUS RT-AX59U with stock firmware. Other AsusWRT and AsusWRT-Merlin
 routers may work.

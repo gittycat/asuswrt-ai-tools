@@ -174,33 +174,69 @@ means genuinely up to date. `_update_status` returns `unknown` for the first
 and `current` for the second; `firmware["state"]` alone cannot tell them
 apart.
 
-### Features with a settled answer
+### Security decision context
 
-Two AsusWRT features look like obvious security wins and are not. Both
-decisions are already made; treat them as policy rather than as questions to
-put back to the user.
+The MCP security reads return brief structured advisories alongside the raw
+state. They are decision context, not automatic findings: distinguish an ASUS
+default from community experience, distinguish a baseline control from an
+optional feature, and let the user decide whether an optional trade-off suits
+their network. Do not score every off switch as a vulnerability.
 
-**Trend Micro — never accept the EULA.** `bwdpi_db_enable` gates the Trend
-Micro DPI engine. Accepting the EULA is what turns it on, and it is a single
-bundled consent covering AiProtection, Traffic Analyzer, Apps Analyzer,
-Adaptive QoS, Game Boost and Web History — enabling any one of them starts
-sending data to Trend Micro. The sub-flags `wrs_mals_enable`, `wrs_cc_enable`
-and `wrs_vp_enable` can read `1` while `bwdpi_db_enable` is `0`; that
-combination means the features are configured but not running, which is the
-desired end state. Reported side effects when it is on include halved
-throughput and false positives.
+**Base firewall — keep it enabled.** ASUS defaults the firewall on and packet
+logging to `None`. A typical IPv4 setup with no port forwards and no WAN web
+administration already has little unsolicited inbound exposure, but that does
+not make the firewall switch redundant: router-local filtering still matters,
+and IPv6 does not rely on NAT. Report `fw_enable_x=0` as a security finding;
+do not report `fw_log_x=none` as one.
+
+- [ASUS: Introduction of Firewall on ASUS router](https://www.asus.com/us/support/faq/1013630/)
+- [ASUS: How to set up IPv6 Firewall](https://www.asus.com/support/faq/1013638/)
+
+**Packet logging — normally leave it at `None`.** Internet-facing addresses
+receive continuous unsolicited probes. Logging dropped packets therefore
+produces a great deal of routine noise, does not change what the firewall
+blocks, and can crowd DHCP, wireless and authentication events out of the
+router's finite local log. Enable it temporarily when investigating a defined
+network problem, not as a general security upgrade. For longer retention,
+ASUS supports sending system logs to a remote server (port 514 by default);
+remote storage is useful even when packet-drop logging stays off. Log capacity
+varies by model and firmware, so do not repeat a fixed 256 KB or “rotates in
+hours” claim without measuring the target router.
+
+- [SNBForums: System log spammed with kernel DROP messages](https://www.snbforums.com/threads/system-log-spammed-with-kernel-drop-messages.42108/)
+- [ASUS: How to save System Log locally or on a remote server](https://www.asus.com/au/support/faq/1044954/)
+
+**Trend Micro features — an informed choice.** `bwdpi_db_enable` gates the
+Trend Micro engine. On the hardware and firmware documented here, accepting
+the bundled EULA covers AiProtection, Traffic Analyzer, Apps Analyzer,
+Adaptive QoS, Game Boost and Web History and starts sending browsing-related
+data to Trend Micro. The sub-flags `wrs_mals_enable`, `wrs_cc_enable` and
+`wrs_vp_enable` can read `1` while `bwdpi_db_enable` is `0`; that combination
+means configured but not running.
+
+AiProtection is not worthless: ASUS documents malicious-site reputation and
+intrusion/infected-device checks, and community reports include real blocks.
+It is also not endpoint malware scanning or a guarantee against novel threats.
+Community reports on throughput, RAM use and false positives vary by router
+and workload. Present the known-destination protection, data-sharing consent
+and possible performance cost in one short trade-off; off is not a missing
+baseline and on is the user's decision.
 
 - [Trend Micro features — do you turn them on?](https://www.snbforums.com/threads/asus-router-features-powered-by-trend-micro-do-you-turn-them-on-and-agree-to-have-your-data-collected.82962/)
 - [Privacy and TrendMicro](https://www.snbforums.com/threads/privacy-and-trendmicro.55956/)
 - [What data is sent to Trend Micro for each feature](https://www.snbforums.com/threads/what-data-is-sent-to-trend-micro-for-each-of-these-features.63471/)
+- [ASUS: How AiProtection protects a home network](https://www.asus.com/support/faq/1012070/)
+- [SNBForums: Does AiProtection really work?](https://www.snbforums.com/threads/does-aiprotection-really-work.72764/)
 
-**DoS protection — leave `fw_dos_x=0`.** The setting adds firewall rules
-limiting new connections and ICMP to about one per second. Against a real
-flood the uplink saturates before the router matters, so it buys nothing;
-meanwhile it breaks legitimate traffic, and users report having to switch it
-off for Cloudflare and for media servers. `0` is the AsusWRT default and the
-correct value for a home router.
+**DoS protection — normally leave `fw_dos_x=0`.** ASUS documents this as an
+optional control that defaults off and may affect router performance. The
+community's practical objection is that router-side rate limits can disrupt
+legitimate bursts, while a volumetric flood has already saturated the WAN link
+before the router can help. Treat `0` as a normal home-router posture, explain
+the trade-off if asked, and leave a different choice with the user rather than
+silently enabling it.
 
+- [ASUS: Introduction of Firewall on ASUS router](https://www.asus.com/us/support/faq/1013630/)
 - [DoS Protection from Asus Firewall — on or off?](https://www.snbforums.com/threads/dos-protection-from-asus-firewall-on-or-off.41149/)
 - [Should I enable ASUS DoS Protection](https://www.snbforums.com/threads/should-i-enable-asus-dos-protection.45641/)
 - [DoS protection breaks Cloudflare / Emby](https://www.snbforums.com/threads/firewall-enable-dos-protection-i-have-to-turn-it-off-for-cloudflare-emby-to-work.55058/)

@@ -65,12 +65,21 @@ about your router. Say **asus** once in the first request; after that the agent
 uses them for *who's on my WiFi?* or *what devices are on my home network?* on
 its own.
 
-The two settings this project will not turn on
-([Trend Micro and DoS](../README.md#two-settings-this-project-will-not-turn-on))
-are repeated in the `get_router_overview`, `get_firewall_and_filters` and `get_nvram`
-descriptions, because an agent that reads `fw_dos_x=0` with no other context
-reports it as a gap to close. A test pins the wording in all three. The
-reasoning and sources are in [settings.md](settings.md).
+The [opinionated-results guidance](../README.md#opinionated-results)
+is repeated in the `get_router_overview`, `get_firewall_and_filters` and
+`get_nvram` descriptions, because an agent that reads an optional feature as
+off with no other context can report it as a gap to close. The first two tools
+also return structured `advisories`: each identifies a `baseline` or `optional`
+control, gives a brief rationale and marks the user as the decision owner. A
+test pins both the schema guidance and the returned context. The fuller
+reasoning and sources are in [settings.md](settings.md#security-decision-context).
+
+For example, a security read includes enough presentation context for the
+agent to say, “Packet logging is off; community guidance is to leave it off for
+routine use because internet scan noise can crowd useful events out of the
+local log. I can explain the trade-off if you are considering enabling it.”
+That is advice, not a hidden action: `kind: optional` and
+`decision_owner: user` are part of the returned advisory.
 
 ## Using the terminal
 
@@ -331,4 +340,3 @@ The diff names the variable and shows how it is encoded. Add it to
 both pick it up from there — and record it in the settings reference. SSH is
 enabled in the web UI under *Administration → System → Service → Enable SSH*; it
 is not exposed in the mobile app.
-

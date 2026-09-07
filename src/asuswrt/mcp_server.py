@@ -89,6 +89,71 @@ NvramName = Annotated[str, Field(min_length=1)]
 Op = Callable[[Any], Awaitable[Any]]
 
 
+# Context that belongs at the agent boundary, not in the router-domain payload.
+# These are deliberately short enough for an agent to surface during a security
+# review.  `kind` separates a security baseline from optional controls, while
+# `decision_owner` prevents an optional trade-off becoming an automatic fix.
+SECURITY_ADVISORIES = [
+    {
+        "setting": "firewall",
+        "nvram": ["fw_enable_x"],
+        "kind": "baseline",
+        "decision_owner": "user",
+        "summary": (
+            "Keep the base firewall enabled: no port forwards and disabled WAN "
+            "administration reduce exposure, but NAT is not a firewall substitute "
+            "and IPv6 does not rely on NAT."
+        ),
+    },
+    {
+        "setting": "packet logging",
+        "nvram": ["fw_log_x"],
+        "kind": "optional",
+        "decision_owner": "user",
+        "summary": (
+            "Community guidance is to leave packet logging at None for routine "
+            "use: it mostly records unsolicited scans, can crowd useful events "
+            "out of the local log, and does not improve blocking; enable it "
+            "temporarily for a defined diagnosis or use remote syslog for retention."
+        ),
+    },
+    {
+        "setting": "DoS protection",
+        "nvram": ["fw_dos_x"],
+        "kind": "optional",
+        "decision_owner": "user",
+        "summary": (
+            "ASUS defaults DoS protection off and community guidance generally "
+            "leaves it off on home routers because router-side rate limits may "
+            "disrupt legitimate traffic and cannot prevent upstream saturation."
+        ),
+    },
+    {
+        "setting": "Trend Micro features",
+        "nvram": [
+            "TM_EULA",
+            "bwdpi_db_enable",
+            "wrs_mals_enable",
+            "wrs_cc_enable",
+            "wrs_vp_enable",
+        ],
+        "kind": "optional",
+        "decision_owner": "user",
+        "summary": (
+            "Community reports are mixed: AiProtection can block known malicious "
+            "destinations, but enabling the Trend Micro engine shares browsing-related "
+            "data and may reduce performance; treat it as a user trade-off, not a "
+            "missing security baseline."
+        ),
+    },
+]
+
+
+def _with_security_advisories(payload: dict[str, Any]) -> dict[str, Any]:
+    """Add decision context without changing the shared CLI/domain payload."""
+    return {**payload, "advisories": SECURITY_ADVISORIES}
+
+
 def _configure_logging() -> None:
     """stderr only. stdout is the JSON-RPC channel."""
     handler = logging.StreamHandler(sys.stderr)
@@ -162,12 +227,17 @@ async def get_router_overview() -> dict:
     no raw nvram. Use this first; call a specific tool afterwards only for
     detailed rows (list_network_devices, list_port_forwards, ...).
 
-    Policy: `fw_dos_x=0` and an unaccepted Trend Micro EULA (`TM_EULA=0`,
-    `bwdpi_db_enable=0`) are the intended states, not gaps to close. Report
-    them as configured and never propose enabling either; the reasons are in
-    the get_firewall_and_filters description.
+    The nested firewall result includes short `advisories`. In a security
+    review, distinguish `baseline` controls from `optional` trade-offs, briefly
+    surface the relevant rationale, and leave optional choices with the user.
+    Do not turn an intentionally-off optional feature into a vulnerability.
     """
-    return await run(lambda router: ops.overview(router, CPU_SAMPLE_SECONDS, False, 0), name="get_router_overview", timeout=READ_TIMEOUT)
+    async def op(router: Any) -> dict[str, Any]:
+        payload = await ops.overview(router, CPU_SAMPLE_SECONDS, False, 0)
+        payload["firewall"] = _with_security_advisories(payload["firewall"])
+        return payload
+
+    return await run(op, name="get_router_overview", timeout=READ_TIMEOUT)
 
 
 async def get_system() -> dict:
@@ -225,19 +295,17 @@ async def get_firewall_and_filters() -> dict:
     A null value means the variable does not exist under this firmware, which
     is not the same as the feature being off. Report it as undetermined.
 
-    Two settings here are deliberate policy, not findings to report. DoS
-    protection stays off (`fw_dos_x=0`): it only rate-limits new connections
-    and ICMP to roughly one per second, which breaks legitimate traffic
-    without stopping a real flood. The Trend Micro EULA stays unaccepted
-    (`TM_EULA=0`, `bwdpi_db_enable=0`): it is one bundled consent covering
-    AiProtection, Traffic Analyzer, Adaptive QoS and Web History, and
-    accepting it starts sending browsing data to Trend Micro. Never propose
-    enabling either. Sub-flags such as `wrs_mals_enable` may read `1` while
-    `bwdpi_db_enable` is `0`: configured but not running, which is the wanted
-    end state. Sources for both decisions are in docs/settings.md, under
-    "Features with a settled answer".
+    Returns short `advisories` alongside the state. They identify a setting as
+    a security `baseline` or an `optional` trade-off, attribute community
+    guidance as such, and mark the user as the decision owner. In a security
+    review, surface the relevant rationale briefly; do not silently turn an
+    optional feature on or label its off state a vulnerability. Sources and
+    fuller reasoning are in docs/settings.md under "Security decision context".
     """
-    return await run(ops.firewall, name="get_firewall_and_filters", timeout=READ_TIMEOUT)
+    async def op(router: Any) -> dict[str, Any]:
+        return _with_security_advisories(await ops.firewall(router))
+
+    return await run(op, name="get_firewall_and_filters", timeout=READ_TIMEOUT)
 
 
 async def get_dns() -> dict:
@@ -337,10 +405,10 @@ async def get_nvram(names: Annotated[list[NvramName], Field(min_length=1)]) -> d
     """Read raw nvram variables that have no dedicated tool. Read-only by
     design. Give at least one variable name.
 
-    Policy: `fw_dos_x=0` and an unaccepted Trend Micro EULA (`TM_EULA=0`,
-    `bwdpi_db_enable=0`) are the intended states, not gaps to close. Report
-    them as configured and never propose enabling either; the reasons are in
-    the get_firewall_and_filters description.
+    When reading `fw_dos_x`, `fw_log_x`, `TM_EULA`, `bwdpi_db_enable` or the
+    Trend Micro sub-flags, use get_firewall_and_filters for the decision
+    context. Their off states are optional trade-offs, not vulnerabilities;
+    explain the relevant benefit and cost and leave the choice with the user.
 
     Variable names, encodings, and which of them are verified against real
     hardware are in docs/settings.md. There is deliberately no write

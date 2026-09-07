@@ -194,18 +194,17 @@ def test_every_read_tool_is_read_only_annotated():
     "name",
     ["get_router_overview", "get_firewall_and_filters", "get_nvram"],
 )
-def test_settled_policy_survives_in_the_tool_descriptions(name):
+def test_decision_context_survives_in_the_tool_descriptions(name):
     """The skill is not always installed - the Claude Desktop extension ships
     the server with no skill mechanism at all, and `claude mcp add` installs
-    none either. An agent that reads fw_dos_x=0 or TM_EULA=0 with no other
-    context reports them as gaps to close, so the schema has to carry the
-    policy itself. See the README, "Two settings this project will not turn
-    on"."""
+    none either. An agent that reads an optional feature as off with no other
+    context can report it as a gap to close, so the schema has to say that the
+    user owns the trade-off. See docs/settings.md, "Security decision context"."""
     tools = {t.name: t for t in asyncio.run(mcp_server.build_server().list_tools())}
     description = " ".join(tools[name].description.split()).lower()
-    assert "fw_dos_x=0" in description
-    assert "trend micro" in description
-    assert "never propose enabling either" in description
+    assert "optional" in description
+    assert "user" in description
+    assert "vulnerabilit" in description
 
 
 # -- reads: every one returns JSON and leaves the router untouched -----------
@@ -218,6 +217,10 @@ def test_get_overview(server, patched, router):
         "system", "health", "wan", "clients", "firewall", "parental",
         "port_forwarding", "guest", "wifi",
     }
+    assert {item["setting"] for item in data["firewall"]["advisories"]} == {
+        "firewall", "packet logging", "DoS protection", "Trend Micro features",
+    }
+    assert all(item["decision_owner"] == "user" for item in data["firewall"]["advisories"])
     assert not router.touched
 
 
@@ -264,7 +267,11 @@ def test_list_network_devices_online_only(server, patched, router):
 def test_get_firewall_and_filters(server, patched, router):
     patched(router)
     data = payload(call(server, "get_firewall_and_filters"))
-    assert set(data) == {"nvram", "parental_control"}
+    assert set(data) == {"nvram", "parental_control", "advisories"}
+    logging = next(item for item in data["advisories"] if item["setting"] == "packet logging")
+    assert logging["kind"] == "optional"
+    assert "Community guidance" in logging["summary"]
+    assert "remote syslog" in logging["summary"]
     assert not router.touched
 
 

@@ -108,17 +108,39 @@ Turn off WPS.
 
 Every change to the router settings is previewed and needs your confirmation.
 
-## Two settings this project will not turn on
+## Opinionated results
 
-**AiProtection** — and with it Traffic Analyzer, Adaptive QoS and Web History.
-They are all gated behind one Trend Micro EULA that sends browsing data off the
-router.
+These tools do more than report whether every switch is on or off. For settings
+whose names can overstate their protection — including firewall packet
+logging, DoS protection and Trend Micro AiProtection — results include a brief
+recommendation based on ASUS documentation and experienced AsusWRT community
+reports, together with the reason and important trade-offs.
 
-**DoS protection** — it only rate-limits traffic to roughly one packet per
-second, which breaks legitimate connections without stopping a real flood.
+Community guidance is clearly labelled as such. Results distinguish security
+baselines, such as keeping the firewall enabled, from optional features and
+leave those choices with you. A recommendation never changes the router:
+every supported change is previewed and still requires your confirmation.
 
-Both reading as off is the expected state, not a gap to close. The reasoning
-and the sources are in [settings.md](docs/settings.md).
+See [settings.md](docs/settings.md#security-decision-context) for the fuller
+reasoning, limitations and sources.
+
+## Security
+
+The MCP server starts read-only. Tools that change settings must be explicitly
+enabled, while reboot and firmware upgrade require a second dangerous-actions
+gate. Even when writes are enabled, every change is returned as a preview
+first and requires a separate confirmed call before it is applied.
+
+The server exposes named, validated operations rather than arbitrary router
+access. Raw NVRAM values can be read but not written, and there is no generic
+command, SSH or router-API passthrough; unsupported changes must be made
+manually in the router's web interface.
+
+These limits are enforced by the server's code, not just by instructions in an
+AI prompt. Prompt-level guardrails can be misunderstood or ignored, but an
+agent cannot call a write tool that was not enabled or a raw mutation endpoint
+that does not exist. This keeps the available authority narrow even if the
+agent makes a mistake.
 
 ## Terminal
 

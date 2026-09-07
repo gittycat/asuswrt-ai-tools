@@ -241,6 +241,37 @@ silently enabling it.
 - [Should I enable ASUS DoS Protection](https://www.snbforums.com/threads/should-i-enable-asus-dos-protection.45641/)
 - [DoS protection breaks Cloudflare / Emby](https://www.snbforums.com/threads/firewall-enable-dos-protection-i-have-to-turn-it-off-for-cloudflare-emby-to-work.55058/)
 
+**DNS rebind protection — normally worth turning on.** `dns_norebind` passes
+`--stop-dns-rebind` to dnsmasq, which rejects and logs upstream answers in
+private space: RFC1918, IPv4-mapped private, and IPv6 link-local and ULA.
+`127.0.0.0/8` and `::1` are covered too unless `rebind-localhost-ok` is added,
+which the stock UI does not expose. ASUS ships it off — `{ "dns_norebind", "0" }`
+in `release/src/router/shared/defaults.c` — so an off reading is the default,
+not a changed setting.
+
+The community position is mild but one-directional: no measurable overhead, no
+reported problems over years of use, occasional log lines. Nobody argues for
+leaving it off. The real cost is false positives on names that legitimately
+resolve into private or loopback space — `plex.direct`, `amazonmusiclocal.com`,
+`localhost.megasyncloopback.mega.nz` — and on split-horizon DNS, where a public
+hostname points at a LAN address. The dnsmasq fix is `rebind-domain-ok`, which
+stock firmware has no field for, so on a network running those services the
+choice is on-with-breakage or off.
+
+Present it as minor hardening, not a baseline. It filters one step of a
+rebinding attack and is documented as bypassable by CNAME or `0.0.0.0`, and
+Chrome's Local Network Access permission prompt (Chrome 142 desktop, extended
+to WebSocket and WebTransport in 147) blocks the browser path at the source.
+There is no write tool: point the user at WAN > Internet Connection.
+
+- [SNBForums: DNS Rebind Protection — on or off?](https://www.snbforums.com/threads/dns-rebind-protection-on-or-off.95088/)
+- [SNBForums: Share possible DNS-Rebind logs](https://www.snbforums.com/threads/share-possible-dns-rebind-logs.48595/)
+- [dnsmasq man page — `--stop-dns-rebind`, `--rebind-localhost-ok`, `--rebind-domain-ok`](https://thekelleys.org.uk/dnsmasq/docs/dnsmasq-man.html)
+- [Plex: How to use secure server connections](https://support.plex.tv/articles/206225077-how-to-use-secure-server-connections/)
+- [NCC Group Singularity: DNS rebinding protection bypasses](https://github.com/nccgroup/singularity/wiki/Protection-Bypasses)
+- [Chrome for Developers: new permission prompt for Local Network Access](https://developer.chrome.com/blog/local-network-access)
+- [ASUS: How can I improve router security](https://www.asus.com/support/faq/1039292/)
+
 ### DNS — `hardware`
 
 Not covered by any library data type; read straight from nvram. The WAN

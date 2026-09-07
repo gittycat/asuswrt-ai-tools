@@ -69,9 +69,11 @@ its own.
 The [opinionated-results guidance](../README.md#opinionated-results)
 is repeated in the `get_router_overview`, `get_firewall_and_filters` and
 `get_nvram` descriptions, because an agent that reads an optional feature as
-off with no other context can report it as a gap to close. The first two tools
-also return structured `advisories`: each identifies a `baseline` or `optional`
-control, gives a brief rationale and marks the user as the decision owner. A
+off with no other context can report it as a gap to close. Those first two
+tools and `get_dns` also return structured `advisories`: each identifies a
+`baseline` or `optional` control, gives a brief rationale and marks the user as
+the decision owner. `get_dns` carries the DNS rebind entry rather than the
+firewall reads, because the value it judges is only in the DNS payload. A
 test pins both the schema guidance and the returned context. The fuller
 reasoning and sources are in [settings.md](settings.md#security-decision-context).
 

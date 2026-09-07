@@ -661,6 +661,22 @@ def test_get_dns_reports_the_unit_and_the_servers(server, patched, router):
     assert data["nvram"]["wan0_dns1_x"] == "1.1.1.1"
 
 
+def test_get_dns_carries_the_rebind_advisory(server, patched, router):
+    """The rebind advisory rides with the DNS read, not the firewall one: the
+    value it judges (dns_norebind) is only in this payload, and the overview
+    does not return DNS state at all. See docs/settings.md."""
+    patched(router)
+    data = payload(call(server, "get_dns"))
+    rebind = next(
+        item for item in data["advisories"] if item["setting"] == "DNS rebind protection"
+    )
+    assert rebind["nvram"] == ["dns_norebind"]
+    assert rebind["kind"] == "optional"
+    assert rebind["decision_owner"] == "user"
+    assert "community guidance is to turn it on" in rebind["summary"]
+    assert not router.touched
+
+
 def test_get_led_reports_led_val(server, patched, router):
     patched(router)
     assert payload(call(server, "get_led"))["led_val"] == "1"

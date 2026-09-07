@@ -93,7 +93,7 @@ Op = Callable[[Any], Awaitable[Any]]
 # These are deliberately short enough for an agent to surface during a security
 # review.  `kind` separates a security baseline from optional controls, while
 # `decision_owner` prevents an optional trade-off becoming an automatic fix.
-SECURITY_ADVISORIES = [
+FIREWALL_ADVISORIES = [
     {
         "setting": "firewall",
         "nvram": ["fw_enable_x"],
@@ -149,9 +149,35 @@ SECURITY_ADVISORIES = [
 ]
 
 
-def _with_security_advisories(payload: dict[str, Any]) -> dict[str, Any]:
+# DNS rebind protection is read by get_dns, not get_firewall_and_filters, so
+# it rides with the DNS payload: an advisory is only useful beside the value it
+# judges, and the overview does not return DNS state at all.
+DNS_ADVISORIES = [
+    {
+        "setting": "DNS rebind protection",
+        "nvram": ["dns_norebind"],
+        "kind": "optional",
+        "decision_owner": "user",
+        "summary": (
+            "ASUS defaults dns_norebind off; community guidance is to turn it on. "
+            "It has no measurable performance cost and rarely breaks a home network, "
+            "but it drops upstream answers pointing into private or loopback space, "
+            "so split-horizon DNS and services that resolve that way (Plex, Amazon "
+            "Music, MEGAsync) can fail or log false positives, and the stock UI "
+            "exposes no per-domain exemption. Minor hardening rather than a "
+            "baseline: it is bypassable by CNAME or 0.0.0.0, and current browsers "
+            "gate local-network access themselves. There is no write tool for it, "
+            "so point the user at WAN > Internet Connection."
+        ),
+    },
+]
+
+
+def _with_advisories(
+    payload: dict[str, Any], advisories: list[dict[str, Any]]
+) -> dict[str, Any]:
     """Add decision context without changing the shared CLI/domain payload."""
-    return {**payload, "advisories": SECURITY_ADVISORIES}
+    return {**payload, "advisories": advisories}
 
 
 def _configure_logging() -> None:
@@ -225,7 +251,9 @@ async def get_router_overview() -> dict:
 
     No firmware check (that costs ~5 s and answers a different question) and
     no raw nvram. Use this first; call a specific tool afterwards only for
-    detailed rows (list_network_devices, list_port_forwards, ...).
+    detailed rows (list_network_devices, list_port_forwards, ...). A security
+    review is not complete from this call alone: `get_dns` and
+    `get_wifi_security` carry settings this overview does not return.
 
     The nested firewall result includes short `advisories`. In a security
     review, distinguish `baseline` controls from `optional` trade-offs, briefly
@@ -234,7 +262,7 @@ async def get_router_overview() -> dict:
     """
     async def op(router: Any) -> dict[str, Any]:
         payload = await ops.overview(router, CPU_SAMPLE_SECONDS, False, 0)
-        payload["firewall"] = _with_security_advisories(payload["firewall"])
+        payload["firewall"] = _with_advisories(payload["firewall"], FIREWALL_ADVISORIES)
         return payload
 
     return await run(op, name="get_router_overview", timeout=READ_TIMEOUT)
@@ -303,7 +331,7 @@ async def get_firewall_and_filters() -> dict:
     fuller reasoning are in docs/settings.md under "Security decision context".
     """
     async def op(router: Any) -> dict[str, Any]:
-        return _with_security_advisories(await ops.firewall(router))
+        return _with_advisories(await ops.firewall(router), FIREWALL_ADVISORIES)
 
     return await run(op, name="get_firewall_and_filters", timeout=READ_TIMEOUT)
 
@@ -320,8 +348,15 @@ async def get_dns() -> dict:
     Subnet (1.1.1.1 does, deliberately) hides the client's network from
     authoritative servers, so CDNs that pick a node by resolver location can
     land traffic far away even though the connection itself is healthy.
+
+    Returns short `advisories` alongside the state, in the same form as
+    `get_firewall_and_filters`: `optional` marks a trade-off the user owns, so
+    surface the rationale rather than reporting an off switch as a finding.
     """
-    return await run(ops.dns, name="get_dns", timeout=READ_TIMEOUT)
+    async def op(router: Any) -> dict[str, Any]:
+        return _with_advisories(await ops.dns(router), DNS_ADVISORIES)
+
+    return await run(op, name="get_dns", timeout=READ_TIMEOUT)
 
 
 async def get_led() -> dict:

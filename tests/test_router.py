@@ -110,6 +110,45 @@ def test_blank_installer_fields_fall_back_to_the_defaults(monkeypatch, tmp_path)
     )
 
 
+def test_unsubstituted_installer_placeholders_fall_back_to_the_defaults(
+    monkeypatch, tmp_path
+):
+    """Claude Desktop can pass "${user_config.router_host}" through verbatim."""
+    monkeypatch.setenv("ASUSWRT_ENV_FILE", str(_empty_env(tmp_path)))
+    monkeypatch.setenv("ROUTER_PASS", "secret")
+    monkeypatch.setattr("asuswrt.router.detect_gateway", lambda: "10.0.0.1")
+    monkeypatch.setenv("ROUTER_HOST", "${user_config.router_host}")
+    monkeypatch.setenv("ROUTER_USER", "${user_config.router_user}")
+    for name in ("ROUTER_SSL", "ROUTER_PORT"):
+        monkeypatch.delenv(name, raising=False)
+
+    config = load_config()
+    assert (config.host, config.username) == ("10.0.0.1", "admin")
+
+
+def test_an_unsubstituted_password_does_not_shadow_the_env_file(
+    monkeypatch, tmp_path
+):
+    env = tmp_path / "configured.env"
+    env.write_text("ROUTER_HOST=192.168.50.1\nROUTER_PASS=secret\n")
+    monkeypatch.setenv("ASUSWRT_ENV_FILE", str(env))
+    monkeypatch.setenv("ROUTER_PASS", "${user_config.router_password}")
+    monkeypatch.setenv("ROUTER_HOST", "${user_config.router_host}")
+
+    config = load_config()
+    assert (config.host, config.password) == ("192.168.50.1", "secret")
+
+
+def test_a_password_that_merely_contains_dollar_braces_survives(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv("ASUSWRT_ENV_FILE", str(_empty_env(tmp_path)))
+    monkeypatch.setenv("ROUTER_HOST", "192.168.50.1")
+    monkeypatch.setenv("ROUTER_PASS", "a${user_config.router_password}b")
+
+    assert load_config().password == "a${user_config.router_password}b"
+
+
 def test_a_blank_installer_password_does_not_shadow_the_env_file(
     monkeypatch, tmp_path
 ):

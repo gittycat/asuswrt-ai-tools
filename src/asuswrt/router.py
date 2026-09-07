@@ -123,8 +123,14 @@ def _searched_paths() -> str:
     return "\n  ".join(str(path) for path in config_paths())
 
 
+# A host that left a config field unsubstituted, e.g. "${user_config.router_host}".
+# Anchored and restricted to a bare identifier, so a password that merely
+# contains "${HOME}" — or is longer than the placeholder — is left alone.
+_UNRESOLVED_PLACEHOLDER = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_.]*\}$")
+
+
 def _drop_blank_env() -> None:
-    """Unset any ROUTER_* variable that is present but empty.
+    """Unset any ROUTER_* variable that is present but not a real value.
 
     The GUI installers (the Claude Code plugin dialog, the Claude Desktop
     extension) substitute an empty string for a field the user left blank, so
@@ -133,9 +139,15 @@ def _drop_blank_env() -> None:
     ROUTER_PASS would shadow a working .env; and os.getenv(name, default)
     hands back the empty string instead of the default, so an empty
     ROUTER_USER would be sent to the router in place of "admin".
+
+    Claude Desktop has a second failure mode for the same case: instead of an
+    empty string it can pass the placeholder through verbatim, so ROUTER_HOST
+    arrives as the literal text "${user_config.router_host}" and is then dialled
+    as a hostname. Treat that as unset too.
     """
     for name in ROUTER_ENV_NAMES:
-        if not os.environ.get(name, "").strip():
+        value = os.environ.get(name, "").strip()
+        if not value or _UNRESOLVED_PLACEHOLDER.match(value):
             os.environ.pop(name, None)
 
 

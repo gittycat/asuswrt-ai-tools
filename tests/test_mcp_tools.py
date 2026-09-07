@@ -93,8 +93,10 @@ def payload(result: CallToolResult):
     """Decode a successful result's content.
 
     A dict-returning tool comes back as one content block; the SDK splits a
-    list-returning tool (list_clients) into one block per element, so that
-    case is reassembled here rather than special-cased at every call site.
+    list-returning tool into one block per element, so that case is reassembled
+    here rather than special-cased at every call site. Every read tool returns
+    a dict today, but the reassembly stays: it costs nothing and the next
+    list-returning tool should not have to rediscover it.
     """
     assert not result.is_error, result.content
     if len(result.content) == 1:
@@ -190,7 +192,7 @@ def test_every_read_tool_is_read_only_annotated():
 
 @pytest.mark.parametrize(
     "name",
-    ["get_overview", "get_firewall_and_filters", "get_nvram"],
+    ["get_router_overview", "get_firewall_and_filters", "get_nvram"],
 )
 def test_settled_policy_survives_in_the_tool_descriptions(name):
     """The skill is not always installed - the Claude Desktop extension ships
@@ -211,7 +213,7 @@ def test_settled_policy_survives_in_the_tool_descriptions(name):
 
 def test_get_overview(server, patched, router):
     patched(router)
-    data = payload(call(server, "get_overview"))
+    data = payload(call(server, "get_router_overview"))
     assert set(data) == {
         "system", "health", "wan", "clients", "firewall", "parental",
         "port_forwarding", "guest", "wifi",
@@ -235,22 +237,27 @@ def test_get_health(server, patched, router):
 
 def test_get_wan(server, patched, router):
     patched(router)
-    data = payload(call(server, "get_wan"))
+    data = payload(call(server, "get_internet_connection"))
     assert "internet" in data
     assert not router.touched
 
 
-def test_list_clients(server, patched, router):
+def test_list_network_devices(server, patched, router):
     patched(router)
-    data = payload(call(server, "list_clients"))
-    assert len(data) == 3
+    data = payload(call(server, "list_network_devices"))
+    assert set(data) == {"online_count", "total_count", "devices"}
+    assert len(data["devices"]) == 3
+    assert data["total_count"] == 3
+    assert data["online_count"] == sum(1 for row in data["devices"] if row["online"])
     assert not router.touched
 
 
-def test_list_clients_online_only(server, patched, router):
+def test_list_network_devices_online_only(server, patched, router):
     patched(router)
-    data = payload(call(server, "list_clients", {"online_only": True}))
-    assert data and all(r["online"] for r in data)
+    data = payload(call(server, "list_network_devices", {"online_only": True}))
+    assert data["devices"] and all(row["online"] for row in data["devices"])
+    # Filtered to online, the two counts describe the same set.
+    assert data["online_count"] == data["total_count"] == len(data["devices"])
     assert not router.touched
 
 
@@ -284,7 +291,7 @@ def test_list_guest_networks(server, patched, router):
 
 def test_get_wireless(server, patched, router):
     patched(router)
-    data = payload(call(server, "get_wireless"))
+    data = payload(call(server, "get_wifi_security"))
     assert "wl0_mfp" in data
     assert not router.touched
 

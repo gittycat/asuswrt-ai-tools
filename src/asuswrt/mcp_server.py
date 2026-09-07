@@ -150,19 +150,24 @@ def _preview(change: str, current: Any, warnings: list[str] | None = None) -> di
 # ---------------------------------------------------------------------------
 
 
-async def get_overview() -> dict:
+async def get_router_overview() -> dict:
     """Broad router status in one call: identity, health, WAN, and counts for
     clients, firewall, parental control, port forwarding, guest wifi and
-    wireless. No firmware check (that costs ~5 s and answers a different
-    question) and no raw nvram. Use this first; call a specific tool
-    afterwards only for detailed rows (list_clients, list_port_forwards, ...).
+    wireless.
+
+    Use for: how is my network doing, router status, check my router, is
+    everything OK at home, give me a summary of my network.
+
+    No firmware check (that costs ~5 s and answers a different question) and
+    no raw nvram. Use this first; call a specific tool afterwards only for
+    detailed rows (list_network_devices, list_port_forwards, ...).
 
     Policy: `fw_dos_x=0` and an unaccepted Trend Micro EULA (`TM_EULA=0`,
     `bwdpi_db_enable=0`) are the intended states, not gaps to close. Report
     them as configured and never propose enabling either; the reasons are in
     the get_firewall_and_filters description.
     """
-    return await run(lambda router: ops.overview(router, CPU_SAMPLE_SECONDS, False, 0), name="get_overview", timeout=READ_TIMEOUT)
+    return await run(lambda router: ops.overview(router, CPU_SAMPLE_SECONDS, False, 0), name="get_router_overview", timeout=READ_TIMEOUT)
 
 
 async def get_system() -> dict:
@@ -179,18 +184,39 @@ async def get_health() -> dict:
     )
 
 
-async def get_wan() -> dict:
-    """Internet connection detail: link state, IP, gateway, DNS."""
-    return await run(ops.wan, name="get_wan", timeout=READ_TIMEOUT)
+async def get_internet_connection() -> dict:
+    """Internet connection detail: link state, public IP, gateway, DNS.
+
+    Use for: is my internet up, is the internet down, what is my public IP,
+    what is my WAN address, is my connection working, what is my ISP giving
+    me, why can I not get online."""
+    return await run(ops.wan, name="get_internet_connection", timeout=READ_TIMEOUT)
 
 
-async def list_clients(online_only: bool = False) -> list[dict]:
-    """Connected and known devices, with name, vendor, IP, connection type
-    and online state. Pass online_only=True to list only devices currently
-    online."""
-    return await run(
-        lambda router: ops.clients(router, online_only), name="list_clients", timeout=READ_TIMEOUT
+async def list_network_devices(online_only: bool = False) -> dict:
+    """Every device on the home network — currently connected and previously
+    known — with name, vendor, IP, MAC, wired/wireless connection type and
+    online state. The router keeps this list; nothing else on the LAN has it.
+
+    Use for: how many devices are on my network, who is on my wifi, what is
+    connected, list the devices, who is using my internet, is there an
+    unknown device on my network, what is that machine's IP address, how many
+    things are online right now.
+
+    Returns `online_count` and `total_count` alongside the rows, so answer
+    "how many" from those rather than counting. Pass online_only=True to drop
+    devices that are known but not currently connected."""
+    rows = await run(
+        lambda router: ops.clients(router, online_only), name="list_network_devices", timeout=READ_TIMEOUT
     )
+    # The counts are the answer to "how many devices are on my network"; a bare
+    # list makes the model tally rows, which it can get wrong. Counted here and
+    # not in ops.clients, which the CLI shares and renders as a table.
+    return {
+        "online_count": sum(1 for row in rows if row["online"]),
+        "total_count": len(rows),
+        "devices": rows,
+    }
 
 
 async def get_firewall_and_filters() -> dict:
@@ -270,17 +296,21 @@ async def list_guest_networks() -> dict:
     return await run(ops.guest, name="list_guest_networks", timeout=READ_TIMEOUT)
 
 
-async def get_wireless() -> dict:
+async def get_wifi_security() -> dict:
     """Radio, WPA mode, management frame protection, country code and WPS
     state for both bands.
 
-    Reading it for "is my wifi secure?", three things decide the answer:
+    Use for: is my wifi secure, how safe is my wifi, is my network encrypted,
+    what security is my wifi using, is WPS on, is WPA2 or WPA3 in use, can
+    someone get onto my wifi.
+
+    Three things decide "is my wifi secure?":
     WPS on (the PIN exchange is brute-forceable — turn it off, nothing modern
     needs it); `psk2` with mfp `disabled` (WPA2 with no management frame
     protection, so deauthentication attacks work freely); and a country code
     that differs between bands, where a band left on `AA` runs the most
     restrictive channel and power set and loses throughput."""
-    return await run(ops.wifi, name="get_wireless", timeout=READ_TIMEOUT)
+    return await run(ops.wifi, name="get_wifi_security", timeout=READ_TIMEOUT)
 
 
 async def check_firmware_update() -> dict:
@@ -322,14 +352,14 @@ async def get_nvram(names: Annotated[list[NvramName], Field(min_length=1)]) -> d
 
 
 READS: list[tuple[Callable, ToolAnnotations]] = [
-    (get_overview, ToolAnnotations(read_only_hint=True, open_world_hint=False, title="Router overview")),
+    (get_router_overview, ToolAnnotations(read_only_hint=True, open_world_hint=False, title="Router overview")),
     (get_system, ToolAnnotations(read_only_hint=True, open_world_hint=False, title="Router identity")),
     (get_health, ToolAnnotations(read_only_hint=True, open_world_hint=False, title="Router health")),
-    (get_wan, ToolAnnotations(read_only_hint=True, open_world_hint=False, title="WAN status")),
+    (get_internet_connection, ToolAnnotations(read_only_hint=True, open_world_hint=False, title="Internet connection")),
     (get_dns, ToolAnnotations(read_only_hint=True, open_world_hint=False, title="DNS settings")),
     (get_led, ToolAnnotations(read_only_hint=True, open_world_hint=False, title="Status lights")),
     (get_upnp, ToolAnnotations(read_only_hint=True, open_world_hint=False, title="UPnP state")),
-    (list_clients, ToolAnnotations(read_only_hint=True, open_world_hint=False, title="Connected devices")),
+    (list_network_devices, ToolAnnotations(read_only_hint=True, open_world_hint=False, title="Network devices")),
     (
         get_firewall_and_filters,
         ToolAnnotations(read_only_hint=True, open_world_hint=False, title="Firewall and filters"),
@@ -346,7 +376,7 @@ READS: list[tuple[Callable, ToolAnnotations]] = [
         list_guest_networks,
         ToolAnnotations(read_only_hint=True, open_world_hint=False, title="Guest networks"),
     ),
-    (get_wireless, ToolAnnotations(read_only_hint=True, open_world_hint=False, title="Wireless security")),
+    (get_wifi_security, ToolAnnotations(read_only_hint=True, open_world_hint=False, title="Wi-Fi security")),
     (
         check_firmware_update,
         ToolAnnotations(read_only_hint=True, open_world_hint=True, title="Check for firmware update"),
@@ -803,7 +833,7 @@ WRITES: list[tuple[Callable, ToolAnnotations]] = [
     (
         set_wifi_security,
         ToolAnnotations(
-            destructive_hint=False, idempotent_hint=True, open_world_hint=False, title="Wireless security"
+            destructive_hint=False, idempotent_hint=True, open_world_hint=False, title="Set Wi-Fi security"
         ),
     ),
     (
@@ -936,6 +966,24 @@ DANGEROUS: list[tuple[Callable, ToolAnnotations]] = [
 # ---------------------------------------------------------------------------
 
 
+# Server-level instructions. These render into the host's system prompt before
+# the model decides how to answer anything, which makes this the only channel
+# that reaches it ahead of its choice of mechanism. A model that has already
+# committed to "shell in and scan the LAN" never searches for these tools, so
+# the text triggers on the subject of the question (the home router and its
+# network), not on the mechanism — gating every ping or ssh on a router check
+# would tax unrelated work. Kept short: it costs tokens on every turn of every
+# conversation for as long as the server is installed.
+INSTRUCTIONS = """\
+The home router is an ASUS (AsusWRT); send questions about it, or about the \
+devices on the home network, to these tools: what is connected and how many, \
+wifi security, internet/WAN state, DNS, port forwarding, firewall. The router \
+holds the authoritative list — do not derive it with arp, nmap or a ping sweep.
+
+get_router_overview for broad status, a specific tool for detail rows.
+"""
+
+
 def build_server(*, allow_writes: bool = False, allow_dangerous: bool = False) -> MCPServer:
     """Assemble a fresh server with the tool set the two gates allow.
 
@@ -943,7 +991,7 @@ def build_server(*, allow_writes: bool = False, allow_dangerous: bool = False) -
     is what makes this testable without env-var/reload gymnastics: tests
     build a server per gate combination and inspect it directly.
     """
-    server = MCPServer("asuswrt", version=version("asuswrt"))
+    server = MCPServer("asuswrt", version=version("asuswrt"), instructions=INSTRUCTIONS)
     for fn, annotations in READS:
         server.add_tool(fn, annotations=annotations)
     if allow_writes:

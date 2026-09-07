@@ -67,7 +67,7 @@ its own.
 
 The two settings this project will not turn on
 ([Trend Micro and DoS](../README.md#two-settings-this-project-will-not-turn-on))
-are repeated in the `get_overview`, `get_firewall_and_filters` and `get_nvram`
+are repeated in the `get_router_overview`, `get_firewall_and_filters` and `get_nvram`
 descriptions, because an agent that reads `fw_dos_x=0` with no other context
 reports it as a gap to close. A test pins the wording in all three. The
 reasoning and sources are in [settings.md](settings.md).
@@ -174,10 +174,11 @@ startup, so after changing one, restart the host.
 ### The tools
 
 ```
-reads (always)       get_overview  get_system  get_health  get_wan
-                     get_dns  get_led  get_upnp  list_clients
+reads (always)       get_router_overview  get_system  get_health
+                     get_internet_connection  list_network_devices
+                     get_wifi_security  get_dns  get_led  get_upnp
                      get_firewall_and_filters  get_parental_control
-                     list_port_forwards  list_guest_networks  get_wireless
+                     list_port_forwards  list_guest_networks
                      check_firmware_update  get_nvram
 
 writes (opt-in)      add_port_forward  remove_port_forward
@@ -189,7 +190,7 @@ writes (opt-in)      add_port_forward  remove_port_forward
 dangerous (both)     reboot_router  upgrade_firmware
 ```
 
-`get_overview` is the cheap starting point — a summary (client *counts*, no
+`get_router_overview` is the cheap starting point — a summary (client *counts*, no
 firmware check, no raw nvram) for one login. `check_firmware_update` makes the
 router contact ASUS and takes about 5 seconds.
 

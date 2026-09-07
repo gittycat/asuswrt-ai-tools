@@ -43,15 +43,7 @@ open asuswrt.mcpb
 Enter the router password in the masked install dialog. On Windows, download
 the same file and open it from **Settings → Extensions → Advanced settings**.
 
-**Codex**
-
-```bash
-uv tool install "asuswrt[mcp] @ git+https://github.com/gittycat/asuswrt-ai-tools"
-asuswrt setup
-codex mcp add asuswrt -- asuswrt-mcp
-```
-
-**ChatGPT**
+**ChatGPT and Codex**
 
 ```bash
 uv tool install "asuswrt[mcp] @ git+https://github.com/gittycat/asuswrt-ai-tools"

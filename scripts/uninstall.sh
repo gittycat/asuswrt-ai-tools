@@ -191,8 +191,15 @@ if command -v claude >/dev/null 2>&1; then
     do_cmd claude plugin marketplace remove asuswrt
   fi
 fi
-# The skill folder and its symlink; the skill no longer exists as of v0.8.0.
-for p in "$HOME/.claude/skills/asuswrt" "$HOME/.agents/skills/asuswrt"; do
+# Skill folders and symlinks from before v0.8.0. The last published skill was
+# named `asus-router`, while some development installs used `asuswrt`; cover
+# both names in both host locations.
+for p in \
+  "$HOME/.claude/skills/asuswrt" \
+  "$HOME/.agents/skills/asuswrt" \
+  "$HOME/.claude/skills/asus-router" \
+  "$HOME/.agents/skills/asus-router"
+do
   if [ -e "$p" ] || [ -L "$p" ]; then
     hit "$(short "$p")"
     do_rm "$p"
@@ -323,6 +330,14 @@ json.dump(d, open(p,'w'), indent=2)
     manual "$(short "$INSTALLS")  (asuswrt entry — python3 missing)"
   fi
 fi
+# Claude Desktop creates this log while the extension server is running. It is
+# specific to this extension, unlike the shared application logs around it.
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  hit "$(short "$p")"
+  do_rm "$p"
+done < <(find "$HOME/Library/Logs/Claude" -maxdepth 1 \
+           -name 'mcp-server-ASUS Router Control*.log' 2>/dev/null)
 # A downloaded bundle, if one is still sitting where the README's curl left it.
 # Matched on the name this project gives its bundles rather than on a version,
 # so the file from any release — including the legacy one — is caught.
@@ -437,4 +452,3 @@ fi
 # it, so a caller cannot fix it by retrying.
 [ "$N_FAIL" -eq 0 ] || exit 1
 exit 0
-

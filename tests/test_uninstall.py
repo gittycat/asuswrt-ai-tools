@@ -106,6 +106,45 @@ def test_uninstall_abbreviates_home_as_a_bare_tilde(tmp_path):
     assert "\\~" not in result.stdout
 
 
+def test_uninstall_removes_all_legacy_skill_names(tmp_path):
+    home = tmp_path / "home"
+    skill_paths = [
+        home / ".claude" / "skills" / "asuswrt",
+        home / ".agents" / "skills" / "asuswrt",
+        home / ".claude" / "skills" / "asus-router",
+        home / ".agents" / "skills" / "asus-router",
+    ]
+    for path in skill_paths:
+        path.mkdir(parents=True)
+        (path / "SKILL.md").write_text("obsolete\n")
+
+    result = run_uninstall(tmp_path, {}, "--yes")
+
+    assert "Removed 4 items:" in result.stdout
+    for path in skill_paths:
+        rendered = str(path).replace(str(home), "~")
+        assert f"  {rendered}" in result.stdout
+        assert not path.exists()
+
+
+def test_uninstall_removes_claude_desktop_runtime_log(tmp_path):
+    log = (
+        tmp_path
+        / "home"
+        / "Library"
+        / "Logs"
+        / "Claude"
+        / "mcp-server-ASUS Router Control.log"
+    )
+    log.parent.mkdir(parents=True)
+    log.write_text("server output\n")
+
+    result = run_uninstall(tmp_path, {}, "--yes")
+
+    assert "~/Library/Logs/Claude/mcp-server-ASUS Router Control.log" in result.stdout
+    assert not log.exists()
+
+
 def test_uninstall_reports_gemini_cli_registration(tmp_path):
     settings = tmp_path / "home" / ".gemini" / "settings.json"
     settings.parent.mkdir(parents=True)

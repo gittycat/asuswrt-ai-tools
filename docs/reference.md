@@ -39,7 +39,8 @@ and in Codex, the plugin, its marketplace entry and saved `pluginConfigs` switch
 before v0.8.0, and the Claude Desktop extension — its unpacked directory, the
 virtualenv uv built inside it, its enabled/disabled file, and its row in
 `extensions-installations.json`, which is the one that makes Desktop stop
-listing it. It skips whatever is not there.
+listing it — plus that extension's MCP server log. It skips whatever is not
+there.
 
 It deliberately leaves tool-owned workspace history and per-project state
 alone, including Claude Code transcripts and Codex companion state. It also

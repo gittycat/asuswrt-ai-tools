@@ -48,17 +48,6 @@ asuswrt setup
 codex mcp add asuswrt -- asuswrt-mcp
 ```
 
-**Gemini CLI**
-
-```bash
-uv tool install "asuswrt[mcp] @ git+https://github.com/gittycat/asuswrt-ai-tools"
-asuswrt setup
-gemini mcp add --scope user asuswrt asuswrt-mcp
-```
-
-`asuswrt setup` asks for the username and password without echoing the password.
-It detects the router address from the default gateway.
-
 **ChatGPT**
 
 ```bash
@@ -79,6 +68,18 @@ dialog or run `asuswrt setup --host ADDRESS`. `ROUTER_SSL` and `ROUTER_PORT`
 are config-file-only settings; the dialogs and `asuswrt setup` do not expose
 them. See
 [Router credentials](docs/credentials.md) for details.
+
+
+**Gemini CLI**
+
+```bash
+uv tool install "asuswrt[mcp] @ git+https://github.com/gittycat/asuswrt-ai-tools"
+asuswrt setup
+gemini mcp add --scope user asuswrt asuswrt-mcp
+```
+
+`asuswrt setup` asks for the username and password without echoing the password.
+It detects the router address from the default gateway.
 
 ### Check
 
